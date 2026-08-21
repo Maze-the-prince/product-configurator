@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'docs');
 const PUBLIC_ROOT = PUBLIC_DIR.endsWith(path.sep) ? PUBLIC_DIR : PUBLIC_DIR + path.sep;
 const DB_FILE = path.join(__dirname, 'data', 'database.json');
 const PORT = Number(process.env.PORT || 8080);
@@ -141,6 +141,9 @@ function handleReadError(res, err) {
 }
 
 function apiHandler(req, res, url) {
+  if (url.pathname.startsWith('/frontendapi/')) {
+    url.pathname = url.pathname.replace('/frontendapi/', '/api/');
+  }
   if (req.method === 'OPTIONS') return sendJSON(res, 204, {});
 
   if (req.method === 'GET' && url.pathname === '/api/health') {
@@ -317,7 +320,7 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (url.pathname.startsWith('/api/')) return apiHandler(req, res, url);
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/frontendapi/')) return apiHandler(req, res, url);
   return serveStatic(req, res, url);
 });
 

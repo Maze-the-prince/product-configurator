@@ -1,12 +1,27 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css"><title>CityLine 240</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+  <title>CityLine 240 — website embed</title>
+</head>
 <body class="embed-body">
   <div class="embed-wrap">
     <div class="website-mock">
-      <div class="fake-nav"><strong>Innovio Solutions</strong></div>
-      <div class="iframe-wrap"><iframe src="./" allow="xr-spatial-tracking; fullscreen; camera"></iframe></div>
+      <div class="fake-nav"><strong>Innovio Solutions</strong><span>WordPress host · HTML object embed</span></div>
+      <div class="iframe-wrap">
+        <object data="./index.html?embed=1" type="text/html" aria-label="Product configurator">
+          <iframe src="./index.html?embed=1" allow="xr-spatial-tracking; fullscreen; camera" title="Product configurator"></iframe>
+        </object>
+      </div>
     </div>
   </div>
+  <script>
+    window.addEventListener('message', (event) => {
+      if (event.data?.source !== 'innovio-configurator') return;
+      console.info('[host postMessage]', event.data.type, event.data);
+    });
+  </script>
 </body>
 </html>
