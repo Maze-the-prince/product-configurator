@@ -30,7 +30,7 @@ const SHARED_PARAMS = [
 ];
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 const PHONE_GPU = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-const DESKTOP_DPR = Math.min(devicePixelRatio || 1, PHONE_GPU ? 1.5 : 1.75);
+const DESKTOP_DPR = Math.min(devicePixelRatio || 1, 1.75);
 const ASSET_VERSION = '2';
 const DEFAULT_GLB_URL = new URL(`./assets/model.glb?v=${ASSET_VERSION}`, import.meta.url).href;
 const AD_LINE = 'Transform your 3D models into configurable views for your clients';
@@ -51,7 +51,7 @@ let glbGroup = null, glbLoaded = false;
 let bodyMat, lidMat, darkMat;
 let glbBodyMat, glbLidMat, glbHwMat;
 let exploded = false;
-let target = { theta: -0.55, phi: 1.12, radius: 2.35 };
+let target = { theta: -0.55, phi: 1.12, radius: PHONE_GPU ? 2.05 : 2.35 };
 let orbit = { ...target };
 let dragging = false, dragX = 0, dragY = 0;
 let xrSession = null, hitTestSource = null, hitTestSourceRequested = false;
@@ -59,6 +59,9 @@ let pointers = new Map();
 let pinchStart = 0;
 let nativeArUrl = null;
 let nativeArTimer = 0;
+let arPlaced = false;
+let studioEnv = null;
+let hemiLight, keyLight, fillLight, ambLight;
 let arController = null;
 let dirty = true;
 const lookAtCenter = new THREE.Vector3(0, .52, 0);
@@ -108,38 +111,42 @@ function setupThree() {
     antialias: DESKTOP_DPR < 1.5,
     alpha: true,
     preserveDrawingBuffer: false,
-    powerPreference: PHONE_GPU ? 'low-power' : 'high-performance'
+    powerPreference: 'high-performance'
   });
   renderer.setPixelRatio(DESKTOP_DPR);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PHONE_GPU ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   renderer.xr.enabled = true;
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
-  scene.environment = makeStudioEnvironment();
+  camera = new THREE.PerspectiveCamera(35, 1, 0.05, 100);
+  studioEnv = makeStudioEnvironment();
+  scene.environment = studioEnv;
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c0c8, 2.2));
-  const key = new THREE.DirectionalLight(0xffffff, 1.65);
-  key.position.set(2.2, 5.2, 2.4);
-  key.castShadow = true;
-  key.shadow.mapSize.set(PHONE_GPU ? 1024 : 2048, PHONE_GPU ? 1024 : 2048);
-  key.shadow.bias = -0.00015;
-  key.shadow.normalBias = 0.035;
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 16;
-  scene.add(key);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  scene.add(new THREE.DirectionalLight(0xe8eef5, 0.55).translateX(-3).translateY(2.4).translateZ(-2));
+  hemiLight = new THREE.HemisphereLight(0xffffff, 0xb8c0c8, 2.2);
+  scene.add(hemiLight);
+  keyLight = new THREE.DirectionalLight(0xffffff, 1.65);
+  keyLight.position.set(2.2, 5.2, 2.4);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(PHONE_GPU ? 1024 : 2048, PHONE_GPU ? 1024 : 2048);
+  keyLight.shadow.bias = -0.00015;
+  keyLight.shadow.normalBias = 0.035;
+  keyLight.shadow.camera.near = 1;
+  keyLight.shadow.camera.far = 16;
+  scene.add(keyLight);
+  ambLight = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambLight);
+  fillLight = new THREE.DirectionalLight(0xe8eef5, 0.55);
+  fillLight.position.set(-3, 2.4, -2);
+  scene.add(fillLight);
 
   floor = new THREE.Mesh(new THREE.CircleGeometry(2.4, 48), new THREE.ShadowMaterial({ opacity: .13 }));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
   grid = new THREE.GridHelper(3.6, 18, 0xcfd6df, 0xe5e9ef);
   grid.material.opacity = .26; grid.material.transparent = true; grid.position.y = .003; scene.add(grid);
-  if (PHONE_GPU) grid.visible = false;
 
   bodyMat = makeGlossPlastic(RALS.ral7021.color);
   lidMat = makeGlossPlastic(RALS.ral9004.color);
@@ -363,10 +370,10 @@ function makeGlossPlastic(hex) {
     color: hex,
     metalness: 0,
     roughness: 0.42,
-    clearcoat: PHONE_GPU ? 0 : 0.28,
-    clearcoatRoughness: PHONE_GPU ? 0.5 : 0.38,
+    clearcoat: 0.28,
+    clearcoatRoughness: 0.38,
     reflectivity: 0.35,
-    envMapIntensity: PHONE_GPU ? 0.28 : 0.45,
+    envMapIntensity: 0.45,
     flatShading: false,
     vertexColors: false,
     side: THREE.FrontSide
@@ -630,7 +637,7 @@ function resize() {
   markDirty();
 }
 function resetView() {
-  target = { theta: -.55, phi: 1.12, radius: 2.35 };
+  target = { theta: -.55, phi: 1.12, radius: PHONE_GPU ? 2.05 : 2.35 };
   exploded = false;
   markDirty();
 }
@@ -674,21 +681,21 @@ async function launchWebXR() {
   const overlay = $('#arOverlay');
   overlay?.classList.remove('hidden');
   const options = {
-    optionalFeatures: ['hit-test', 'dom-overlay', 'local-floor'],
+    optionalFeatures: ['hit-test', 'dom-overlay'],
     ...(overlay ? { domOverlay: { root: overlay } } : {})
   };
   try {
     xrSession = await navigator.xr.requestSession('immersive-ar', options);
     renderer.setPixelRatio(1);
+    renderer.xr.setFramebufferScaleFactor(PHONE_GPU ? 0.75 : 1);
     renderer.xr.setReferenceSpaceType('local');
     await renderer.xr.setSession(xrSession);
     document.body.classList.add('is-ar');
-    floor.visible = false;
-    grid.visible = false;
-    if (dimensionGroup) dimensionGroup.visible = false;
+    arPlaced = false;
+    setARPresentation(true);
     root.visible = false;
     reticle.visible = false;
-    setText('#arBanner', 'Move your phone to find the floor, then tap to place.');
+    setText('#arBanner', 'Move your phone to find the floor. The bin places itself, then tap to move it.');
     xrSession.addEventListener('select', placeARAnchor);
     xrSession.addEventListener('end', onAREnd);
     return true;
@@ -697,9 +704,35 @@ async function launchWebXR() {
     xrSession = null;
     overlay?.classList.add('hidden');
     document.body.classList.remove('is-ar');
+    setARPresentation(false);
     renderer.setPixelRatio(DESKTOP_DPR);
     return false;
   }
+}
+
+function setARPresentation(on) {
+  renderer.shadowMap.enabled = !on;
+  scene.environment = on ? null : studioEnv;
+  renderer.toneMapping = on ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = on ? 1 : 1.12;
+  if (hemiLight) hemiLight.intensity = on ? 0.9 : 2.2;
+  if (ambLight) ambLight.intensity = on ? 0.2 : 0.55;
+  if (keyLight) {
+    keyLight.intensity = on ? 0.4 : 1.65;
+    keyLight.castShadow = !on;
+  }
+  if (fillLight) fillLight.visible = !on;
+  if (floor) floor.visible = !on;
+  if (grid) grid.visible = !on;
+  if (dimensionGroup) dimensionGroup.visible = false;
+  [bodyMat, lidMat, glbBodyMat, glbLidMat].forEach((mat) => {
+    if (!mat) return;
+    if ('clearcoat' in mat) mat.clearcoat = on ? 0 : 0.28;
+    if ('envMapIntensity' in mat) mat.envMapIntensity = on ? 0 : 0.45;
+    mat.needsUpdate = true;
+  });
+  if (on) renderer.xr.setFramebufferScaleFactor(0.75);
+  else renderer.xr.setFramebufferScaleFactor(1);
 }
 
 function launchSceneViewer() {
@@ -775,22 +808,26 @@ function cloneForNativeAR(source) {
 
 function placeARAnchor() {
   if (!xrSession) return;
-  if (reticle.visible) {
-    root.position.setFromMatrixPosition(reticle.matrix);
-    root.quaternion.setFromRotationMatrix(reticle.matrix);
-  } else {
+  const pos = new THREE.Vector3();
+  if (reticle.visible) pos.setFromMatrixPosition(reticle.matrix);
+  else {
     const xrCam = renderer.xr.getCamera();
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
     dir.y = 0;
     if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
     dir.normalize();
-    root.position.copy(xrCam.position).addScaledVector(dir, 1.4);
-    root.position.y = 0;
-    root.quaternion.identity();
+    pos.copy(xrCam.position).addScaledVector(dir, 1.4);
+    pos.y = xrCam.position.y - 1.3;
   }
+  root.position.copy(pos);
+  root.quaternion.identity();
+  const xrCam = renderer.xr.getCamera();
+  const dx = xrCam.position.x - root.position.x;
+  const dz = xrCam.position.z - root.position.z;
+  if (dx * dx + dz * dz > 0.0001) root.rotation.y = Math.atan2(dx, dz);
   root.visible = true;
-  setText('#arBanner', 'Placed at 1:1 scale. Tap another spot to move it.');
-  markDirty();
+  arPlaced = true;
+  setText('#arBanner', 'Tap another spot on the floor to move it.');
 }
 
 function updateXRHitTest(frame) {
@@ -811,14 +848,14 @@ function updateXRHitTest(frame) {
       const pose = hits[0].getPose(referenceSpace);
       reticle.visible = true;
       reticle.matrix.fromArray(pose.transform.matrix);
-    } else reticle.visible = false;
+      if (!arPlaced) placeARAnchor();
+    } else if (!arPlaced) reticle.visible = false;
   }
 }
 function onAREnd() {
   xrSession = null; hitTestSource = null; hitTestSourceRequested = false; reticle.visible = false;
-  floor.visible = true;
-  if (grid) grid.visible = !PHONE_GPU;
-  if (dimensionGroup) dimensionGroup.visible = false;
+  arPlaced = false;
+  setARPresentation(false);
   root.visible = true; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.quaternion.identity();
   renderer.setPixelRatio(DESKTOP_DPR);
   document.body.classList.remove('is-ar');

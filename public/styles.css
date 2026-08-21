@@ -246,7 +246,7 @@ body.is-ar #viewerCanvas {
     grid-template-areas: "stage" "options";
     gap: 22px;
   }
-  .viewer-card { min-height: 280px; height: min(52dvh, 420px); }
+  .viewer-card { min-height: 360px; height: min(58dvh, 560px); }
   .shop-foot { justify-content: stretch; flex-direction: column; padding-top: 20px; }
   .shop-foot-actions { width: 100%; }
   .shop-foot-actions .btn { flex: 1; min-width: 0; }
