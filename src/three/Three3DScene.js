@@ -55,6 +55,7 @@ export class Three3DScene {
     this.fitScale = 1;
     this.worldScale = 1;
     this.nativeHeight = 1;
+    this.arFloorY = null;
     this.studioEnv = null;
     this.xrLight = null;
     this.overlay = null;
@@ -119,14 +120,15 @@ export class Three3DScene {
     this.reticle.visible = false;
     this.scene.add(this.reticle);
 
-    this.contactShadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.42, 36),
-      new THREE.MeshBasicMaterial({ color: 0x111111, opacity: 0.28, transparent: true, depthWrite: false })
+    this.arFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(4, 4),
+      new THREE.ShadowMaterial({ opacity: 0.28 })
     );
-    this.contactShadow.rotation.x = -Math.PI / 2;
-    this.contactShadow.position.y = 0.002;
-    this.contactShadow.visible = false;
-    this.root.add(this.contactShadow);
+    this.arFloor.rotation.x = -Math.PI / 2;
+    this.arFloor.position.y = 0.012;
+    this.arFloor.receiveShadow = true;
+    this.arFloor.visible = false;
+    this.root.add(this.arFloor);
 
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerMove = this.onPointerMove.bind(this);
@@ -189,7 +191,10 @@ export class Three3DScene {
   setScalePercent(percent) {
     this.scalePercent = percent;
     this.applyCurrentScale();
-    if (this.xrSession && this.arPlaced) this.onArScale(percent);
+    if (this.xrSession && this.arPlaced) {
+      this.onArScale(percent);
+      if (this.arFloorY != null) this.snapToFloor(this.arFloorY);
+    }
   }
 
   setArMode(mode) {
@@ -276,9 +281,18 @@ export class Three3DScene {
     this.root.position.copy(_hitPos);
     this.root.rotation.set(0, this.root.rotation.y, 0);
     this.root.visible = true;
-    this.contactShadow.visible = true;
+    this.arFloor.visible = true;
     this.arPlaced = true;
     this.reticle.visible = false;
+    this.snapToFloor(_hitPos.y);
+  }
+
+  snapToFloor(floorY) {
+    this.arFloorY = floorY;
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.model);
+    if (!Number.isFinite(box.min.y)) return;
+    this.root.position.y += floorY - box.min.y - 0.012;
   }
 
   nudgeOnFloor(dx, dy) {
@@ -450,8 +464,9 @@ export class Three3DScene {
     this.root.rotation.set(0, 0, 0);
     this.root.visible = false;
     this.ground.visible = false;
-    this.contactShadow.visible = false;
+    this.arFloor.visible = false;
     this.reticle.visible = false;
+    this.renderer.shadowMap.autoUpdate = true;
     this.applyCurrentScale();
     document.body.classList.add('is-ar');
     this.setArMode('scanning');
@@ -461,14 +476,14 @@ export class Three3DScene {
       this.xrLight.addEventListener('estimationstart', () => {
         this.scene.add(this.xrLight);
         if (this.xrLight.environment) this.scene.environment = this.xrLight.environment;
-        this.keyLight.visible = false;
-        this.hemi.visible = false;
+        this.keyLight.intensity = 0.55;
+        this.hemi.intensity = 0.45;
       });
       this.xrLight.addEventListener('estimationend', () => {
         this.scene.remove(this.xrLight);
         this.scene.environment = this.studioEnv;
-        this.keyLight.visible = true;
-        this.hemi.visible = true;
+        this.keyLight.intensity = 1.45;
+        this.hemi.intensity = 1.35;
       });
     } catch {
       this.xrLight = null;
@@ -508,13 +523,16 @@ export class Three3DScene {
     this.arMoving = false;
     this.arPointers.clear();
     this.reticle.visible = false;
-    this.contactShadow.visible = false;
+    this.arFloor.visible = false;
     this.root.visible = true;
     this.root.position.set(0, 0, 0);
     this.root.rotation.set(0, 0, 0);
+    this.arFloorY = null;
+    this.arFloor.visible = false;
     this.ground.visible = true;
-    this.keyLight.visible = true;
-    this.hemi.visible = true;
+    this.renderer.shadowMap.autoUpdate = !this.bakedShadows;
+    this.keyLight.intensity = 1.45;
+    this.hemi.intensity = 1.35;
     this.scene.environment = this.studioEnv;
     if (this.xrLight) this.scene.remove(this.xrLight);
     document.body.classList.remove('is-ar');

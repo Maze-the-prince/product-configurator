@@ -44,7 +44,10 @@ function rsEncode(data, ec) {
 const VERSIONS = {
   2: { size: 25, data: 28, ec: 16, blocks: 1, align: [6, 18] },
   3: { size: 29, data: 44, ec: 26, blocks: 1, align: [6, 22] },
-  4: { size: 33, data: 64, ec: 18, blocks: 2, align: [6, 26] }
+  4: { size: 33, data: 64, ec: 18, blocks: 2, align: [6, 26] },
+  5: { size: 37, data: 86, ec: 24, blocks: 2, align: [6, 30] },
+  6: { size: 41, data: 108, ec: 16, blocks: 4, align: [6, 34] },
+  7: { size: 45, data: 124, ec: 18, blocks: 4, align: [6, 22, 38] }
 };
 
 const FORMAT_M = [0x5412, 0x5125, 0x5e7c, 0x5b4b, 0x45f9, 0x40ce, 0x4f97, 0x4aa0];
@@ -53,6 +56,9 @@ function pickVersion(n) {
   if (n + 2 <= 28) return 2;
   if (n + 2 <= 44) return 3;
   if (n + 2 <= 64) return 4;
+  if (n + 2 <= 86) return 5;
+  if (n + 2 <= 108) return 6;
+  if (n + 2 <= 124) return 7;
   throw new Error('QR payload too long');
 }
 

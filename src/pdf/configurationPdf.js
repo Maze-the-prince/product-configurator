@@ -109,13 +109,14 @@ async function composePdfPage(code, viewUrl, shotUrl, config) {
     drawQr(ctx, viewUrl, 64, H - 292, 196);
   } catch (err) {
     console.warn('[EquipXR] QR failed', err);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(64, H - 292, 196, 196);
-    ctx.strokeStyle = '#111';
-    ctx.strokeRect(64.5, H - 291.5, 195, 195);
-    ctx.fillStyle = '#111';
-    ctx.font = '700 18px Inter, Arial, sans-serif';
-    ctx.fillText(code, 84, H - 190);
+    try {
+      drawQr(ctx, `${viewUrl.split('?')[0]}?c=${code}`, 64, H - 292, 196);
+    } catch {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(64, H - 292, 196, 196);
+      ctx.strokeStyle = '#111';
+      ctx.strokeRect(64.5, H - 291.5, 195, 195);
+    }
   }
   ctx.fillStyle = '#111';
   ctx.font = '800 28px Inter, Arial, sans-serif';

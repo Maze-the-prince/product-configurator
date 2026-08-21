@@ -56,19 +56,25 @@ export function configReducer(state, action) {
   }
 }
 
+export function configViewUrl(config) {
+  const url = new URL(location.origin + location.pathname.replace(/index\.html$/i, ''));
+  const body = RALS[config.body] || RALS.ral7021;
+  const lid = RALS[config.lid] || RALS.ral9004;
+  url.searchParams.set('c', `${body.code}-${lid.code}`);
+  return url.toString();
+}
+
 export function readConfigFromUrl() {
   const params = new URL(location.href).searchParams;
   const next = { ...initialConfig };
+  const compact = String(params.get('c') || '');
+  const [bodyCode, lidCode] = compact.split('-');
+  const bodyKey = RAL_ORDER.find((key) => RALS[key].code === bodyCode);
+  const lidKey = RAL_ORDER.find((key) => RALS[key].code === lidCode);
+  if (bodyKey) next.body = bodyKey;
+  if (lidKey) next.lid = lidKey;
   if (RALS[params.get('body')]) next.body = params.get('body');
   if (RALS[params.get('lid')]) next.lid = params.get('lid');
   if (params.get('scale')) next.scale = clampScale(params.get('scale'));
   return next;
-}
-
-export function configViewUrl(config) {
-  const url = new URL(location.origin + location.pathname);
-  url.searchParams.set('body', config.body);
-  url.searchParams.set('lid', config.lid);
-  url.searchParams.set('scale', String(clampScale(config.scale)));
-  return url.toString();
 }
