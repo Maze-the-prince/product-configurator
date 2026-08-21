@@ -14,7 +14,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); }
-body { min-height: 100vh; }
+body { min-height: 100dvh; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
@@ -23,8 +23,8 @@ a { color: inherit; }
 .shop {
   max-width: 1280px;
   margin: 0 auto;
-  min-height: 100vh;
-  padding: 36px 40px 28px;
+  min-height: 100dvh;
+  padding: 36px 40px calc(28px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
 }
@@ -104,12 +104,19 @@ a { color: inherit; }
 .ar-link {
   margin-top: 14px;
   border: 0; background: transparent;
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 8px 14px;
   font-size: 13px; font-weight: 800; letter-spacing: .04em;
   text-transform: uppercase; color: #374151;
 }
 .ar-link:hover { color: var(--accent); }
 .ar-icon { width: 22px; height: 22px; display: block; flex: 0 0 auto; }
+.ar-quicklook {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
 .shop-foot { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding-top: 28px; flex-wrap: wrap; }
 .shop-foot-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .request-btn {
@@ -211,7 +218,24 @@ td { padding: 12px 9px; border-bottom: 1px solid #edf1f5; vertical-align: top; }
 .iframe-wrap { height: 860px; }
 .iframe-wrap iframe { width: 100%; height: 100%; border: 0; }
 
-.ar-banner { position: absolute; z-index: 10; left: 50%; transform: translateX(-50%); bottom: 82px; background: rgba(17,24,39,.88); color: white; padding: 10px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; backdrop-filter: blur(10px); }
+.ar-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 16px calc(24px + env(safe-area-inset-bottom));
+  pointer-events: none;
+  background: transparent;
+}
+.ar-overlay .btn { pointer-events: auto; }
+.ar-banner {
+  margin: 0; max-width: 22rem; text-align: center;
+  background: rgba(17,24,39,.88); color: white;
+  padding: 10px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; line-height: 1.35;
+}
+body.is-ar #viewerCanvas {
+  position: fixed; inset: 0; width: 100% !important; height: 100% !important; z-index: 70;
+}
 
 @media (max-width: 1100px) {
   .admin-grid { grid-template-columns: 1fr; }
@@ -220,20 +244,25 @@ td { padding: 12px 9px; border-bottom: 1px solid #edf1f5; vertical-align: top; }
   .shop-body {
     grid-template-columns: 1fr;
     grid-template-areas: "stage" "options";
+    gap: 22px;
   }
-  .viewer-card { min-height: 420px; height: 52vh; }
-  .shop-foot { justify-content: stretch; flex-direction: column; }
+  .viewer-card { min-height: 280px; height: min(52dvh, 420px); }
+  .shop-foot { justify-content: stretch; flex-direction: column; padding-top: 20px; }
   .shop-foot-actions { width: 100%; }
-  .shop-foot-actions .btn { flex: 1; }
-  .request-btn { width: auto; }
+  .shop-foot-actions .btn { flex: 1; min-width: 0; }
+  .request-btn { width: 100%; min-width: 0; }
 }
 @media (max-width: 760px) {
-  .shop { padding: 20px 16px 18px; }
-  .shop-kicker { font-size: 26px; }
-  .shop-tagline { font-size: 18px; }
+  .shop { padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); }
+  .shop-head { margin-bottom: 16px; }
+  .shop-kicker { font-size: 22px; }
+  .shop-tagline { font-size: 15px; }
+  .shop-ad { margin-top: 18px; font-size: 13px; padding: 12px 14px; }
   .swatches, .swatches-ral { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .info-grid, .spec-grid, .metric-grid, .field-grid, .form-grid { grid-template-columns: 1fr; }
   .form-grid .full { grid-column: auto; }
+  .text-input, .select-input, .textarea { font-size: 16px; }
+  .modal { width: 100%; border-radius: 16px; }
   .admin-shell { padding: 18px 14px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
   .embed-body { padding: 14px; }

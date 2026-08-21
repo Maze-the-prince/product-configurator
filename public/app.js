@@ -54,6 +54,10 @@ let target = { theta: -0.55, phi: 1.12, radius: 2.35 };
 let orbit = { ...target };
 let dragging = false, dragX = 0, dragY = 0;
 let xrSession = null, hitTestSource = null, hitTestSourceRequested = false;
+let pointers = new Map();
+let pinchStart = 0;
+let nativeArUrl = null;
+let nativeArTimer = 0;
 let arController = null;
 let dirty = true;
 const lookAtCenter = new THREE.Vector3(0, .52, 0);
@@ -77,7 +81,7 @@ async function init() {
   try {
     setupThree();
     updateAll();
-    tryLoadPreviewGlb().then((ok) => { if (ok) updateAll(); }).catch((err) => console.error(err));
+    tryLoadPreviewGlb().then((ok) => { if (ok) updateAll(); scheduleNativeArFile(); }).catch((err) => console.error(err));
   } catch (err) {
     console.error('[EquipXR] 3D view failed', err);
     $('#viewerError')?.classList.remove('hidden');
@@ -88,6 +92,12 @@ async function init() {
 }
 
 function markDirty() { dirty = true; }
+
+function pointerSpread() {
+  const pts = [...pointers.values()];
+  if (pts.length < 2) return 0;
+  return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+}
 
 function setupThree() {
   const canvas = $('#viewerCanvas');
@@ -141,30 +151,49 @@ function setupThree() {
   reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
 
   arController = renderer.xr.getController(0);
-  arController.addEventListener('select', () => {
-    if (xrSession && reticle.visible) {
-      root.position.setFromMatrixPosition(reticle.matrix);
-      root.quaternion.setFromRotationMatrix(reticle.matrix);
-      root.visible = true;
-      setText('#arBanner', 'Placed at 1:1 scale. Tap another surface to reposition.');
-      markDirty();
-    }
-  });
+  arController.addEventListener('select', placeARAnchor);
   scene.add(arController);
 
   canvas.addEventListener('pointerdown', e => {
     if (xrSession) return;
     hideOrbitHint();
-    dragging = true; dragX = e.clientX; dragY = e.clientY; canvas.setPointerCapture?.(e.pointerId); markDirty();
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      dragging = true; dragX = e.clientX; dragY = e.clientY; canvas.setPointerCapture?.(e.pointerId);
+    } else {
+      dragging = false;
+      pinchStart = pointerSpread();
+    }
+    markDirty();
   });
   canvas.addEventListener('pointermove', e => {
-    if (!dragging || xrSession) return;
+    if (xrSession || !pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size >= 2) {
+      const spread = pointerSpread();
+      if (pinchStart > 0 && spread > 0) {
+        const factor = pinchStart / spread;
+        target.radius = THREE.MathUtils.clamp(target.radius * factor, 1.45, 4.2);
+        pinchStart = spread;
+        markDirty();
+      }
+      return;
+    }
+    if (!dragging) return;
     const dx = e.clientX - dragX, dy = e.clientY - dragY; dragX = e.clientX; dragY = e.clientY;
     target.theta -= dx * .008; target.phi = THREE.MathUtils.clamp(target.phi + dy * .006, .35, 1.45);
     markDirty();
   });
-  canvas.addEventListener('pointerup', () => dragging = false);
-  canvas.addEventListener('pointercancel', () => dragging = false);
+  canvas.addEventListener('pointerup', e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchStart = 0;
+    if (pointers.size === 0) dragging = false;
+  });
+  canvas.addEventListener('pointercancel', e => {
+    pointers.delete(e.pointerId);
+    pinchStart = 0;
+    dragging = false;
+  });
   canvas.addEventListener('wheel', e => {
     if (xrSession) return;
     e.preventDefault();
@@ -409,6 +438,7 @@ function applyGlbFinish() {
   const lidHex = RALS[config.lid]?.color;
   if (glbBodyMat && bodyHex != null) glbBodyMat.color.setHex(bodyHex);
   if (glbLidMat && lidHex != null) glbLidMat.color.setHex(lidHex);
+  scheduleNativeArFile();
 }
 
 function mountPreviewGlb(sceneObj, url) {
@@ -547,6 +577,7 @@ function bindUI() {
   $('#arBtn')?.addEventListener('click', startAR);
   $('#arRetryBtn')?.addEventListener('click', () => { closeModal('#arHelpModal'); startAR(); });
   $('#arHelpClose')?.addEventListener('click', () => closeModal('#arHelpModal'));
+  $('#arExitBtn')?.addEventListener('click', () => xrSession?.end());
   $('#copyArLink')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(location.href); toast('AR link copied'); });
 
   $('#saveBtn')?.addEventListener('click', saveConfiguration);
@@ -624,38 +655,166 @@ function money(v) {
 
 async function startAR() {
   track('ar_launch', { sku: config.computed?.sku });
-  if (!navigator.xr || !window.isSecureContext) return showARHelp('WebXR requires a supported mobile browser over HTTPS.');
+  if (isIOS()) {
+    if (!isAppleSafari()) {
+      showARHelp('On iPhone, open this page in Safari — AR uses Apple Quick Look, which Chrome and in-app browsers cannot start.');
+      return;
+    }
+    return launchQuickLookAR();
+  }
+  if (await launchWebXR()) return;
+  if (isAndroid()) return launchSceneViewer();
+  showARHelp('Open this HTTPS page in Safari on iPhone, or Chrome on Android, then tap View in AR.');
+}
+
+function isIOS() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isAppleSafari() {
+  const ua = navigator.userAgent || '';
+  return isIOS() && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+}
+
+async function launchWebXR() {
+  if (!navigator.xr || !window.isSecureContext) return false;
   let supported = false;
-  try { supported = await navigator.xr.isSessionSupported('immersive-ar'); } catch {}
-  if (!supported) return showARHelp('Immersive WebXR AR is not available on this browser/device.');
+  try { supported = await navigator.xr.isSessionSupported('immersive-ar'); } catch { return false; }
+  if (!supported) return false;
+  const overlay = $('#arOverlay');
+  overlay?.classList.remove('hidden');
+  const options = {
+    optionalFeatures: ['hit-test', 'dom-overlay', 'local-floor'],
+    ...(overlay ? { domOverlay: { root: overlay } } : {})
+  };
   try {
-    xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: { root: document.body } });
+    xrSession = await navigator.xr.requestSession('immersive-ar', options);
     renderer.setPixelRatio(1);
     renderer.xr.setReferenceSpaceType('local');
     await renderer.xr.setSession(xrSession);
-    floor.visible = false; grid.visible = false; dimensionGroup.visible = false; root.visible = false; reticle.visible = false;
-    $('#arBanner')?.classList.remove('hidden');
-    setText('#arBanner', 'Move your phone to detect a floor, then tap to place.');
+    document.body.classList.add('is-ar');
+    floor.visible = false;
+    grid.visible = false;
+    if (dimensionGroup) dimensionGroup.visible = false;
+    root.visible = false;
+    reticle.visible = false;
+    setText('#arBanner', 'Move your phone to find the floor, then tap to place.');
+    xrSession.addEventListener('select', placeARAnchor);
     xrSession.addEventListener('end', onAREnd);
+    return true;
   } catch (err) {
     console.error(err);
     xrSession = null;
+    overlay?.classList.add('hidden');
+    document.body.classList.remove('is-ar');
     renderer.setPixelRatio(DESKTOP_DPR);
-    showARHelp('AR session could not start. Check camera permission and browser compatibility.');
+    return false;
   }
+}
+
+function launchSceneViewer() {
+  const file = DEFAULT_GLB_URL;
+  const title = encodeURIComponent(product.productName || 'Product');
+  const fallback = encodeURIComponent(location.href);
+  toast('Opening AR… colours follow the 3D file if live WebXR is unavailable.');
+  location.href = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(file)}&mode=ar_preferred&resizable=false&title=${title}#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
+}
+
+async function launchQuickLookAR() {
+  const link = $('#arQuickLook');
+  if (nativeArUrl && link) {
+    openQuickLook(link, nativeArUrl);
+    return;
+  }
+  toast('Preparing AR…');
+  try {
+    await prepareNativeArFile();
+  } catch (err) {
+    console.error(err);
+    showARHelp('Could not build the iPhone AR file. Stay in Safari, wait for the 3D model, then try again.');
+    return;
+  }
+  if (nativeArUrl && link) openQuickLook(link, nativeArUrl);
+  else showARHelp('AR file is ready. Tap View in AR again to open Quick Look.');
+}
+
+function openQuickLook(link, url) {
+  link.setAttribute('rel', 'ar');
+  link.href = url;
+  link.click();
+}
+
+function scheduleNativeArFile() {
+  if (!isIOS()) return;
+  clearTimeout(nativeArTimer);
+  nativeArTimer = setTimeout(() => { prepareNativeArFile().catch((err) => console.warn(err)); }, 400);
+}
+
+async function prepareNativeArFile() {
+  const source = (glbGroup && glbLoaded) ? glbGroup : chassisGroup;
+  if (!source) return;
+  const { USDZExporter } = await import('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/exporters/USDZExporter.js');
+  const exporter = new USDZExporter();
+  const exportRoot = cloneForNativeAR(source);
+  const data = await exporter.parseAsync(exportRoot, { quickLookCompatible: true });
+  const blob = new Blob([data], { type: 'model/vnd.usdz+zip' });
+  if (nativeArUrl) URL.revokeObjectURL(nativeArUrl);
+  nativeArUrl = URL.createObjectURL(blob);
+  const link = $('#arQuickLook');
+  if (link) link.href = nativeArUrl;
+}
+
+function cloneForNativeAR(source) {
+  const clone = source.clone(true);
+  clone.traverse((obj) => {
+    if (!obj.isMesh) return;
+    const src = obj.material;
+    const color = src?.color ? src.color.clone() : new THREE.Color(0x888888);
+    obj.material = new THREE.MeshStandardMaterial({
+      color,
+      metalness: src.metalness ?? 0,
+      roughness: src.roughness ?? 0.45,
+      envMapIntensity: 0.35
+    });
+  });
+  const wrap = new THREE.Group();
+  wrap.add(clone);
+  wrap.updateMatrixWorld(true);
+  return wrap;
+}
+
+function placeARAnchor() {
+  if (!xrSession) return;
+  if (reticle.visible) {
+    root.position.setFromMatrixPosition(reticle.matrix);
+    root.quaternion.setFromRotationMatrix(reticle.matrix);
+  } else {
+    const xrCam = renderer.xr.getCamera();
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
+    dir.y = 0;
+    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
+    dir.normalize();
+    root.position.copy(xrCam.position).addScaledVector(dir, 1.4);
+    root.position.y = 0;
+    root.quaternion.identity();
+  }
+  root.visible = true;
+  setText('#arBanner', 'Placed at 1:1 scale. Tap another spot to move it.');
+  markDirty();
 }
 
 function updateXRHitTest(frame) {
   if (!frame || !xrSession) return;
   const referenceSpace = renderer.xr.getReferenceSpace();
   const session = renderer.xr.getSession();
+  if (!referenceSpace || !session) return;
   if (!hitTestSourceRequested) {
     hitTestSourceRequested = true;
     session.requestReferenceSpace('viewer')
       .then((viewerSpace) => session.requestHitTestSource({ space: viewerSpace }))
       .then((source) => { hitTestSource = source; })
       .catch(() => { hitTestSourceRequested = false; });
-    session.addEventListener('end', () => { hitTestSourceRequested = false; hitTestSource = null; });
   }
   if (hitTestSource) {
     const hits = frame.getHitTestResults(hitTestSource);
@@ -668,10 +827,12 @@ function updateXRHitTest(frame) {
 }
 function onAREnd() {
   xrSession = null; hitTestSource = null; hitTestSourceRequested = false; reticle.visible = false;
-  floor.visible = true; grid.visible = true; dimensionGroup.visible = true;
+  floor.visible = true; grid.visible = true;
+  if (dimensionGroup) dimensionGroup.visible = false;
   root.visible = true; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.quaternion.identity();
   renderer.setPixelRatio(DESKTOP_DPR);
-  $('#arBanner')?.classList.add('hidden');
+  document.body.classList.remove('is-ar');
+  $('#arOverlay')?.classList.add('hidden');
   resize();
 }
 function showARHelp(message) { setText('#arLinkBox', `${message}\n\n${location.href}`); openModal('#arHelpModal'); }

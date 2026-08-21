@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="3D configurator for a 240 litre waste bin — body colour, lid colour, and AR view" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
   <title>CityLine 240 — 3D configurator</title>
 </head>
 <body>
@@ -26,9 +26,8 @@
       <section class="shop-stage">
         <div class="viewer-card" id="viewerCard">
           <canvas id="viewerCanvas"></canvas>
-          <p class="orbit-caption" id="orbitHint">Click and drag to rotate · 360°</p>
+          <p class="orbit-caption" id="orbitHint">Drag to rotate · 360°</p>
           <p class="viewer-error hidden" id="viewerError">3D view could not start. Open this page in Chrome or Safari.</p>
-          <div id="arBanner" class="ar-banner hidden">Move your phone to detect a floor, then tap to place.</div>
         </div>
         <button class="ar-link" id="arBtn" type="button">
           <svg class="ar-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -107,13 +106,20 @@
     <div class="modal">
       <div class="modal-head"><h2>View in AR</h2><button class="icon-btn" id="arHelpClose" type="button">×</button></div>
       <div class="modal-body">
-        <p style="line-height:1.6;color:#475569;margin-top:0">Open this page on a supported phone over HTTPS, then tap <strong>View in AR</strong> to place the bin at 1:1 scale.</p>
+        <p id="arHelpCopy" style="line-height:1.6;color:#475569;margin-top:0">On iPhone use Safari. On Android use Chrome. This page must stay on HTTPS.</p>
         <div class="codebox" id="arLinkBox"></div>
         <div class="modal-actions"><button class="btn" id="copyArLink" type="button">Copy link</button><button class="btn btn-primary" id="arRetryBtn" type="button">Try AR again</button></div>
       </div>
     </div>
   </div>
 
+  <div id="arOverlay" class="ar-overlay hidden">
+    <p id="arBanner" class="ar-banner">Move your phone to find the floor, then tap to place.</p>
+    <button class="btn btn-dark" id="arExitBtn" type="button">Exit AR</button>
+  </div>
+  <a id="arQuickLook" class="ar-quicklook" rel="ar" href="assets/model.glb">
+    <img alt="240 L waste bin" width="1" height="1" />
+  </a>
   <div class="toast hidden" id="toast"></div>
   <script type="importmap">
   {
@@ -122,6 +128,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=18"></script>
+  <script type="module" src="app.js?v=19"></script>
 </body>
 </html>
