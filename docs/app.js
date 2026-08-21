@@ -1,6 +1,5 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/addons/loaders/GLTFLoader.js';
-import { mergeVertices } from './vendor/addons/utils/BufferGeometryUtils.js';
 
 const $ = (sel) => document.querySelector(sel);
 function setText(sel, value) {
@@ -30,8 +29,10 @@ const SHARED_PARAMS = [
   ['18a84c55-3d07-4062-c9b4-b3e5f0a1d923', 'EQX_Weight_kg', 'NUMBER', 'Empty weight']
 ];
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
-const DESKTOP_DPR = Math.min(devicePixelRatio || 1, 1.75);
-const DEFAULT_GLB_URL = new URL('./assets/model.glb', import.meta.url).href;
+const PHONE_GPU = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const DESKTOP_DPR = Math.min(devicePixelRatio || 1, PHONE_GPU ? 1.5 : 1.75);
+const ASSET_VERSION = '2';
+const DEFAULT_GLB_URL = new URL(`./assets/model.glb?v=${ASSET_VERSION}`, import.meta.url).href;
 const AD_LINE = 'Transform your 3D models into configurable views for your clients';
 const CONTACT_EMAIL = 'mazenbanat@outlook.com';
 const CONTACT_PHONE = '+961 81931045';
@@ -106,12 +107,12 @@ function setupThree() {
     canvas,
     antialias: DESKTOP_DPR < 1.5,
     alpha: true,
-    preserveDrawingBuffer: true,
-    powerPreference: 'high-performance'
+    preserveDrawingBuffer: false,
+    powerPreference: PHONE_GPU ? 'low-power' : 'high-performance'
   });
   renderer.setPixelRatio(DESKTOP_DPR);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = PHONE_GPU ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
@@ -125,7 +126,7 @@ function setupThree() {
   const key = new THREE.DirectionalLight(0xffffff, 1.65);
   key.position.set(2.2, 5.2, 2.4);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(PHONE_GPU ? 1024 : 2048, PHONE_GPU ? 1024 : 2048);
   key.shadow.bias = -0.00015;
   key.shadow.normalBias = 0.035;
   key.shadow.camera.near = 1;
@@ -138,6 +139,7 @@ function setupThree() {
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
   grid = new THREE.GridHelper(3.6, 18, 0xcfd6df, 0xe5e9ef);
   grid.material.opacity = .26; grid.material.transparent = true; grid.position.y = .003; scene.add(grid);
+  if (PHONE_GPU) grid.visible = false;
 
   bodyMat = makeGlossPlastic(RALS.ral7021.color);
   lidMat = makeGlossPlastic(RALS.ral9004.color);
@@ -306,7 +308,7 @@ function previewGlbUrl() {
   if (!param) return DEFAULT_GLB_URL;
   const name = param.replace(/\\/g, '/').split('/').pop();
   if (!name || !/\.(glb|gltf)$/i.test(name)) return DEFAULT_GLB_URL;
-  return new URL(`./assets/${encodeURIComponent(name)}`, import.meta.url).href;
+  return new URL(`./assets/${encodeURIComponent(name)}?v=${ASSET_VERSION}`, import.meta.url).href;
 }
 
 function parseGltfBuffer(buffer, path) {
@@ -361,10 +363,10 @@ function makeGlossPlastic(hex) {
     color: hex,
     metalness: 0,
     roughness: 0.42,
-    clearcoat: 0.28,
-    clearcoatRoughness: 0.38,
+    clearcoat: PHONE_GPU ? 0 : 0.28,
+    clearcoatRoughness: PHONE_GPU ? 0.5 : 0.38,
     reflectivity: 0.35,
-    envMapIntensity: 0.45,
+    envMapIntensity: PHONE_GPU ? 0.28 : 0.45,
     flatShading: false,
     vertexColors: false,
     side: THREE.FrontSide
@@ -378,18 +380,6 @@ function makeMatteRubber(hex) {
     vertexColors: false,
     side: THREE.FrontSide
   });
-}
-
-function smoothCadGeometry(geometry) {
-  let geo = geometry.clone();
-  if (geo.getAttribute('uv')) geo.deleteAttribute('uv');
-  if (geo.getAttribute('uv2')) geo.deleteAttribute('uv2');
-  if (geo.getAttribute('tangent')) geo.deleteAttribute('tangent');
-  if (geo.getAttribute('color')) geo.deleteAttribute('color');
-  if (geo.getAttribute('normal')) geo.deleteAttribute('normal');
-  try { geo = mergeVertices(geo, 0.0008); } catch {}
-  geo.computeVertexNormals();
-  return geo;
 }
 
 function isWheelName(name) {
@@ -416,7 +406,6 @@ function preparePreviewMeshes(model) {
     obj.receiveShadow = false;
     if (wheelParts.has(obj)) obj.material = glbHwMat;
     else obj.material = meshRole(obj) === 'lid' ? glbLidMat : glbBodyMat;
-    try { obj.geometry = smoothCadGeometry(obj.geometry); } catch (err) { console.warn('[EquipXR] Smooth failed', obj.name, err); }
   });
 }
 
@@ -466,7 +455,7 @@ async function tryLoadPreviewGlb() {
   const url = previewGlbUrl();
   let res;
   try {
-    res = await fetch(url, { cache: 'no-store' });
+    res = await fetch(url);
   } catch {
     return false;
   }
@@ -827,7 +816,8 @@ function updateXRHitTest(frame) {
 }
 function onAREnd() {
   xrSession = null; hitTestSource = null; hitTestSourceRequested = false; reticle.visible = false;
-  floor.visible = true; grid.visible = true;
+  floor.visible = true;
+  if (grid) grid.visible = !PHONE_GPU;
   if (dimensionGroup) dimensionGroup.visible = false;
   root.visible = true; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.quaternion.identity();
   renderer.setPixelRatio(DESKTOP_DPR);
