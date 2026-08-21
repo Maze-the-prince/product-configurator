@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Three3DScene } from '../three/Three3DScene.js';
 
-export function Viewer({ config, scalePercent, onReady, onError, onArState }) {
+export function Viewer({ config, scalePercent, onReady, onError, onArState, onArScale }) {
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
   const arStateRef = useRef(onArState);
+  const arScaleRef = useRef(onArScale);
   arStateRef.current = onArState;
+  arScaleRef.current = onArScale;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -14,7 +16,8 @@ export function Viewer({ config, scalePercent, onReady, onError, onArState }) {
     try {
       scene = new Three3DScene(canvas, {
         modelUrl: `${import.meta.env.BASE_URL}assets/model.glb`,
-        onArState: (mode) => arStateRef.current?.(mode)
+        onArState: (mode) => arStateRef.current?.(mode),
+        onArScale: (value) => arScaleRef.current?.(value)
       });
     } catch (err) {
       console.error(err);

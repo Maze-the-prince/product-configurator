@@ -13,6 +13,7 @@ export const RAL_ORDER = Object.keys(RALS);
 
 export const CONTACT_EMAIL = 'mazenbanat@outlook.com';
 export const CONTACT_PHONE = '+961 81931045';
+export const PRODUCT_NAME = '240L Waste Bin';
 export const AD_LINE = 'Transform your 3D models into configurable views for your clients';
 
 export const SCALE_MIN = 50;
@@ -30,7 +31,7 @@ export const initialConfig = {
   scale: SCALE_DEFAULT
 };
 
-export function skuFor(config, prefix = 'CL240') {
+export function skuFor(config, prefix = 'WB240') {
   const body = RALS[config.body] || RALS.ral7021;
   const lid = RALS[config.lid] || RALS.ral9004;
   return `${prefix}-B${body.code}-L${lid.code}`;

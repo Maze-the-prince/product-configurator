@@ -225,7 +225,8 @@ td { padding: 12px 9px; border-bottom: 1px solid #edf1f5; vertical-align: top; }
   opacity: 0;
   visibility: hidden;
 }
-.ar-overlay.is-active { opacity: 1; visibility: visible; }
+.ar-overlay.is-active { opacity: 1; visibility: visible; pointer-events: auto; touch-action: none; }
+.ar-overlay.is-active .ar-banner { pointer-events: none; }
 .ar-overlay .btn, .ar-overlay .ar-scale-control { pointer-events: auto; }
 .ar-banner {
   margin: 0; max-width: 22rem; text-align: center;

@@ -27,11 +27,12 @@ function meshRole(obj) {
 }
 
 export class Three3DScene {
-  constructor(canvas, { modelUrl, bakedShadows = true, onArState } = {}) {
+  constructor(canvas, { modelUrl, bakedShadows = true, onArState, onArScale } = {}) {
     this.canvas = canvas;
     this.modelUrl = modelUrl;
     this.bakedShadows = bakedShadows;
     this.onArState = onArState || (() => {});
+    this.onArScale = onArScale || (() => {});
     this.model = null;
     this.orbit = { theta: -0.55, phi: 1.12, radius: 2.35 };
     this.target = { ...this.orbit };
@@ -43,6 +44,13 @@ export class Three3DScene {
     this.hitTestSource = null;
     this.arPlaced = false;
     this.arMoving = false;
+    this.arHitStable = 0;
+    this.arLastHitY = null;
+    this.arPointers = new Map();
+    this.arPinchStart = 0;
+    this.arPinchScale0 = 100;
+    this.arTwistStart = 0;
+    this.arTwistYaw0 = 0;
     this.scalePercent = 100;
     this.fitScale = 1;
     this.worldScale = 1;
@@ -125,8 +133,9 @@ export class Three3DScene {
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onWheel = this.onWheel.bind(this);
     this.onResize = this.onResize.bind(this);
-    this.onARSelectStart = this.onARSelectStart.bind(this);
-    this.onARSelectEnd = this.onARSelectEnd.bind(this);
+    this.onARPointerDown = this.onARPointerDown.bind(this);
+    this.onARPointerMove = this.onARPointerMove.bind(this);
+    this.onARPointerUp = this.onARPointerUp.bind(this);
     canvas.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
@@ -180,7 +189,7 @@ export class Three3DScene {
   setScalePercent(percent) {
     this.scalePercent = percent;
     this.applyCurrentScale();
-    if (this.xrSession && this.arPlaced) this.setArMode('scaling');
+    if (this.xrSession && this.arPlaced) this.onArScale(percent);
   }
 
   setArMode(mode) {
@@ -242,6 +251,7 @@ export class Three3DScene {
     if (!space) return;
     const hits = frame.getHitTestResults(this.hitTestSource);
     if (!hits.length) {
+      this.arHitStable = 0;
       if (!this.arPlaced) {
         this.reticle.visible = false;
         this.setArMode('scanning');
@@ -250,34 +260,93 @@ export class Three3DScene {
     }
     const pose = hits[0].getPose(space);
     if (!pose) return;
-    this.reticle.visible = !this.arPlaced || this.arMoving;
+    const y = pose.transform.position.y;
+    if (this.arLastHitY != null && Math.abs(y - this.arLastHitY) < 0.025) this.arHitStable += 1;
+    else this.arHitStable = 1;
+    this.arLastHitY = y;
+    const stable = this.arHitStable >= 8;
     this.reticle.matrix.fromArray(pose.transform.matrix);
-    if (!this.arPlaced) this.setArMode('placing');
-    if (this.arMoving) this.placeAtReticle();
+    this.reticle.visible = !this.arPlaced && stable;
+    if (!this.arPlaced && stable) this.setArMode('placing');
   }
 
   placeAtReticle() {
+    if (!this.reticle.visible) return;
     _hitPos.setFromMatrixPosition(this.reticle.matrix);
     this.root.position.copy(_hitPos);
-    this.root.quaternion.identity();
+    this.root.rotation.set(0, this.root.rotation.y, 0);
     this.root.visible = true;
     this.contactShadow.visible = true;
     this.arPlaced = true;
+    this.reticle.visible = false;
   }
 
-  onARSelectStart() {
-    if (!this.reticle.visible && !this.arPlaced) return;
-    this.arMoving = this.arPlaced;
-    this.placeAtReticle();
-    this.setArMode(this.arMoving ? 'moving' : 'placed');
+  nudgeOnFloor(dx, dy) {
+    const cam = this.renderer.xr.getCamera();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    right.y = 0;
+    fwd.y = 0;
+    if (right.lengthSq() < 1e-6 || fwd.lengthSq() < 1e-6) return;
+    right.normalize();
+    fwd.normalize();
+    const s = 0.0016;
+    this.root.position.addScaledVector(right, dx * s);
+    this.root.position.addScaledVector(fwd, -dy * s);
   }
 
-  onARSelectEnd() {
-    this.arMoving = false;
-    if (this.arPlaced) {
+  onARPointerDown(e) {
+    if (!this.xrSession || e.target.closest('button, input, label')) return;
+    e.preventDefault();
+    this.overlay?.setPointerCapture?.(e.pointerId);
+    this.arPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.arPointers.size === 2) {
+      const pts = [...this.arPointers.values()];
+      this.arPinchStart = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      this.arPinchScale0 = this.scalePercent;
+      this.arTwistStart = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+      this.arTwistYaw0 = this.root.rotation.y;
+      this.arMoving = false;
+    } else if (this.arPlaced) {
+      this.arMoving = true;
+      this.setArMode('moving');
+    }
+  }
+
+  onARPointerMove(e) {
+    if (!this.xrSession || !this.arPointers.has(e.pointerId)) return;
+    const prev = this.arPointers.get(e.pointerId);
+    const dx = e.clientX - prev.x;
+    const dy = e.clientY - prev.y;
+    this.arPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.arPointers.size === 2 && this.arPlaced) {
+      const pts = [...this.arPointers.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const twist = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+      if (this.arPinchStart > 8) {
+        const next = THREE.MathUtils.clamp(Math.round(this.arPinchScale0 * (dist / this.arPinchStart)), 50, 200);
+        this.setScalePercent(next);
+        this.setArMode('scaling');
+      }
+      this.root.rotation.y = this.arTwistYaw0 + (twist - this.arTwistStart);
+      return;
+    }
+    if (this.arPlaced && this.arMoving) this.nudgeOnFloor(dx, dy);
+  }
+
+  onARPointerUp(e) {
+    if (!this.xrSession) return;
+    const wasOne = this.arPointers.size === 1;
+    this.arPointers.delete(e.pointerId);
+    if (wasOne && !this.arPlaced && this.reticle.visible) {
+      this.placeAtReticle();
+      this.setArMode('placed');
+    } else if (this.arPlaced && this.arPointers.size === 0) {
+      this.arMoving = false;
       this.reticle.visible = false;
       this.setArMode('placed');
     }
+    this.arPinchStart = 0;
   }
 
   onResize() {
@@ -375,6 +444,10 @@ export class Three3DScene {
     await this.renderer.xr.setSession(this.xrSession);
     this.arPlaced = false;
     this.arMoving = false;
+    this.arHitStable = 0;
+    this.arLastHitY = null;
+    this.arPointers.clear();
+    this.root.rotation.set(0, 0, 0);
     this.root.visible = false;
     this.ground.visible = false;
     this.contactShadow.visible = false;
@@ -407,12 +480,13 @@ export class Three3DScene {
     } catch {
       this.hitTestSource = null;
     }
-    this.xrSession.addEventListener('selectstart', this.onARSelectStart);
-    this.xrSession.addEventListener('selectend', this.onARSelectEnd);
-    this.xrSession.addEventListener('select', () => {
-      if (!this.arPlaced && this.reticle.visible) this.onARSelectStart();
-    });
     this.xrSession.addEventListener('end', () => this.onAREnd());
+    if (this.overlay) {
+      this.overlay.addEventListener('pointerdown', this.onARPointerDown);
+      this.overlay.addEventListener('pointermove', this.onARPointerMove);
+      this.overlay.addEventListener('pointerup', this.onARPointerUp);
+      this.overlay.addEventListener('pointercancel', this.onARPointerUp);
+    }
   }
 
   async exitAR() {
@@ -422,15 +496,22 @@ export class Three3DScene {
   }
 
   onAREnd() {
+    if (this.overlay) {
+      this.overlay.removeEventListener('pointerdown', this.onARPointerDown);
+      this.overlay.removeEventListener('pointermove', this.onARPointerMove);
+      this.overlay.removeEventListener('pointerup', this.onARPointerUp);
+      this.overlay.removeEventListener('pointercancel', this.onARPointerUp);
+    }
     this.xrSession = null;
     this.hitTestSource = null;
     this.arPlaced = false;
     this.arMoving = false;
+    this.arPointers.clear();
     this.reticle.visible = false;
     this.contactShadow.visible = false;
     this.root.visible = true;
     this.root.position.set(0, 0, 0);
-    this.root.quaternion.identity();
+    this.root.rotation.set(0, 0, 0);
     this.ground.visible = true;
     this.keyLight.visible = true;
     this.hemi.visible = true;

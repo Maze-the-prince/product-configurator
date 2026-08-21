@@ -5,15 +5,15 @@ import {
   AD_LINE,
   CONTACT_EMAIL,
   CONTACT_PHONE,
+  PRODUCT_NAME,
   RAL_ORDER,
   RALS,
-  SCALE_MAX,
-  SCALE_MIN,
   configReducer,
   configViewUrl,
   readConfigFromUrl,
   skuFor
 } from './state/config.js';
+import { downloadConfigurationPdf } from './pdf/configurationPdf.js';
 
 const EMBED = new URL(location.href).searchParams.get('embed') === '1';
 const SAVE_KEY = 'equipxr-saved';
@@ -66,6 +66,10 @@ export function App() {
     postToHost({ type: 'configurationChanged', configuration: config, sku });
   }, [config, sku]);
 
+  const onArScale = useCallback((value) => {
+    setArScale(value);
+  }, []);
+
   const onArState = useCallback((mode) => {
     setArMode(mode);
     if (mode === 'idle') {
@@ -114,15 +118,10 @@ export function App() {
     }
   }
 
-  function changeArScale(value) {
-    setArScale(value);
-    sceneRef.current?.setScalePercent(value);
-  }
-
   async function share() {
     const url = configViewUrl(config);
     try {
-      if (navigator.share) await navigator.share({ title: '240 L waste bin', url });
+      if (navigator.share) await navigator.share({ title: PRODUCT_NAME, url });
       else {
         await navigator.clipboard.writeText(url);
         flash('Share link copied');
@@ -138,8 +137,20 @@ export function App() {
     flash('Configuration saved locally');
   }
 
-  function printView() {
-    window.print();
+  async function printView() {
+    try {
+      flash('Preparing PDF…');
+      const saved = await downloadConfigurationPdf({
+        config,
+        viewUrl: configViewUrl(config),
+        captureJpeg: () => sceneRef.current.captureJpeg(),
+        sku
+      });
+      flash(`PDF saved · code ${saved.code}`);
+    } catch (err) {
+      console.error(err);
+      flash(err?.message || 'Could not create the PDF');
+    }
   }
 
   async function requestOffer(event) {
@@ -148,7 +159,7 @@ export function App() {
     const body = Object.fromEntries(fd.entries());
     const bodyRal = RALS[config.body];
     const lidRal = RALS[config.lid];
-    const subject = `Offer request: 240 L waste bin ${sku}`;
+    const subject = `Offer request: ${PRODUCT_NAME} ${sku}`;
     const mailText = [
       'New configuration request',
       '',
@@ -177,13 +188,17 @@ export function App() {
   }
 
   const saved = savedOpen ? JSON.parse(localStorage.getItem(SAVE_KEY) || '[]') : [];
-  const arHint = arMode === 'scanning' || arMode === 'launching'
-    ? 'Scan the floor, then tap to place'
-    : arMode === 'placing'
-      ? 'Tap to place'
-      : arMode === 'moving'
-        ? 'Release to set the new position'
-        : 'Tap to move · drag the slider to rescale';
+  const arHint = !inAndroidAR
+    ? ''
+    : arMode === 'scanning' || arMode === 'launching'
+      ? 'Move the phone to find the floor, then tap to place'
+      : arMode === 'placing'
+        ? 'Tap to place'
+        : arMode === 'moving'
+          ? 'Drag to move'
+          : arMode === 'scaling'
+            ? `${arScale}%`
+            : 'Drag to move · pinch to scale · twist to rotate';
 
   return (
     <main className={`shop${EMBED ? ' is-embed' : ''}`}>
@@ -208,6 +223,7 @@ export function App() {
               onReady={onReady}
               onError={() => setViewerError(true)}
               onArState={onArState}
+              onArScale={onArScale}
             />
             {orbitHint && <p className="orbit-caption">Drag to rotate · 360°</p>}
             {viewerError && <p className="viewer-error">3D view could not start. Open this page in Chrome or Safari.</p>}
@@ -240,19 +256,7 @@ export function App() {
       </footer>
 
       <div id="arOverlay" ref={overlayRef} className={`ar-overlay${inAndroidAR ? ' is-active' : ''}`}>
-        <p className="ar-banner">{arHint}</p>
-        <label className="ar-scale-control">
-          <span>Scale</span>
-          <input
-            type="range"
-            min={SCALE_MIN}
-            max={SCALE_MAX}
-            step={5}
-            value={arScale}
-            onChange={(e) => changeArScale(Number(e.target.value))}
-          />
-          <strong>{arScale}%</strong>
-        </label>
+        {arHint && <p className="ar-banner">{arHint}</p>}
         <button className="btn btn-dark" type="button" onClick={() => sceneRef.current?.exitAR()}>Exit AR</button>
       </div>
 
