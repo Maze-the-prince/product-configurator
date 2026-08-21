@@ -15,9 +15,19 @@ export const CONTACT_EMAIL = 'mazenbanat@outlook.com';
 export const CONTACT_PHONE = '+961 81931045';
 export const AD_LINE = 'Transform your 3D models into configurable views for your clients';
 
+export const SCALE_MIN = 50;
+export const SCALE_MAX = 200;
+export const SCALE_DEFAULT = 100;
+
+export function clampScale(value) {
+  const n = Math.round(Number(value) || SCALE_DEFAULT);
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, n));
+}
+
 export const initialConfig = {
   body: 'ral7021',
-  lid: 'ral9004'
+  lid: 'ral9004',
+  scale: SCALE_DEFAULT
 };
 
 export function skuFor(config, prefix = 'CL240') {
@@ -32,10 +42,13 @@ export function configReducer(state, action) {
       return { ...state, body: RALS[action.value] ? action.value : state.body };
     case 'setLid':
       return { ...state, lid: RALS[action.value] ? action.value : state.lid };
+    case 'setScale':
+      return { ...state, scale: clampScale(action.value) };
     case 'load':
       return {
         body: RALS[action.config?.body] ? action.config.body : state.body,
-        lid: RALS[action.config?.lid] ? action.config.lid : state.lid
+        lid: RALS[action.config?.lid] ? action.config.lid : state.lid,
+        scale: clampScale(action.config?.scale ?? state.scale)
       };
     default:
       return state;
@@ -47,6 +60,7 @@ export function readConfigFromUrl() {
   const next = { ...initialConfig };
   if (RALS[params.get('body')]) next.body = params.get('body');
   if (RALS[params.get('lid')]) next.lid = params.get('lid');
+  if (params.get('scale')) next.scale = clampScale(params.get('scale'));
   return next;
 }
 
@@ -54,5 +68,6 @@ export function configViewUrl(config) {
   const url = new URL(location.origin + location.pathname);
   url.searchParams.set('body', config.body);
   url.searchParams.set('lid', config.lid);
+  url.searchParams.set('scale', String(clampScale(config.scale)));
   return url.toString();
 }

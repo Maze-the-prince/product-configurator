@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
+import { XREstimatedLight } from 'three/examples/jsm/webxr/XREstimatedLight.js';
 import { RALS } from '../state/config.js';
+
+const BIN_HEIGHT_M = 1.07;
+const _hitPos = new THREE.Vector3();
 
 function isWheelName(name) {
   return /WHEEL|TYRE|TIRE|AXLE|BEARING|BLADE|HUB|RIM|CASTER|CASTOR/.test(String(name || '').toUpperCase());
@@ -22,10 +27,11 @@ function meshRole(obj) {
 }
 
 export class Three3DScene {
-  constructor(canvas, { modelUrl, bakedShadows = true } = {}) {
+  constructor(canvas, { modelUrl, bakedShadows = true, onArState } = {}) {
     this.canvas = canvas;
     this.modelUrl = modelUrl;
     this.bakedShadows = bakedShadows;
+    this.onArState = onArState || (() => {});
     this.model = null;
     this.orbit = { theta: -0.55, phi: 1.12, radius: 2.35 };
     this.target = { ...this.orbit };
@@ -34,6 +40,17 @@ export class Three3DScene {
     this.pinchStart = 0;
     this.dirty = true;
     this.xrSession = null;
+    this.hitTestSource = null;
+    this.arPlaced = false;
+    this.arMoving = false;
+    this.scalePercent = 100;
+    this.fitScale = 1;
+    this.worldScale = 1;
+    this.nativeHeight = 1;
+    this.studioEnv = null;
+    this.xrLight = null;
+    this.overlay = null;
+    this._arMode = 'idle';
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -50,15 +67,18 @@ export class Three3DScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = !bakedShadows;
     this.renderer.xr.enabled = true;
+    this.renderer.xr.setReferenceSpaceType('local');
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.05, 100);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.studioEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this.studioEnv;
     pmrem.dispose();
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0xb8c0c8, 1.35);
+    this.hemi = hemi;
     this.scene.add(hemi);
     this.keyLight = new THREE.DirectionalLight(0xffffff, 1.45);
     this.keyLight.position.set(2.4, 4.2, 2.8);
@@ -83,11 +103,30 @@ export class Three3DScene {
     this.root = new THREE.Group();
     this.scene.add(this.root);
 
+    this.reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.07, 0.09, 36).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.92, transparent: true })
+    );
+    this.reticle.matrixAutoUpdate = false;
+    this.reticle.visible = false;
+    this.scene.add(this.reticle);
+
+    this.contactShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.42, 36),
+      new THREE.MeshBasicMaterial({ color: 0x111111, opacity: 0.28, transparent: true, depthWrite: false })
+    );
+    this.contactShadow.rotation.x = -Math.PI / 2;
+    this.contactShadow.position.y = 0.002;
+    this.contactShadow.visible = false;
+    this.root.add(this.contactShadow);
+
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onWheel = this.onWheel.bind(this);
     this.onResize = this.onResize.bind(this);
+    this.onARSelectStart = this.onARSelectStart.bind(this);
+    this.onARSelectEnd = this.onARSelectEnd.bind(this);
     canvas.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
@@ -96,7 +135,7 @@ export class Three3DScene {
 
     this.onResize();
     this.applyOrbit(true);
-    this.renderer.setAnimationLoop(() => this.tick());
+    this.renderer.setAnimationLoop((time, frame) => this.tick(time, frame));
   }
 
   async load() {
@@ -119,15 +158,35 @@ export class Three3DScene {
   }
 
   sitOnGround(model) {
+    model.scale.set(1, 1, 1);
+    model.position.set(0, 0, 0);
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
+    this.nativeHeight = Math.max(0.001, size.y);
+    model.position.y -= box.min.y;
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = 1.05 / maxDim;
-    model.scale.multiplyScalar(scale);
-    model.updateMatrixWorld(true);
-    const box2 = new THREE.Box3().setFromObject(model);
-    model.position.y -= box2.min.y;
+    this.fitScale = 1.05 / maxDim;
+    this.worldScale = BIN_HEIGHT_M / this.nativeHeight;
+    this.applyCurrentScale();
+  }
+
+  applyCurrentScale() {
+    const factor = (this.xrSession ? this.worldScale : this.fitScale) * (this.scalePercent / 100);
+    this.root.scale.setScalar(factor);
+    this.dirty = true;
+  }
+
+  setScalePercent(percent) {
+    this.scalePercent = percent;
+    this.applyCurrentScale();
+    if (this.xrSession && this.arPlaced) this.setArMode('scaling');
+  }
+
+  setArMode(mode) {
+    if (this._arMode === mode) return;
+    this._arMode = mode;
+    this.onArState(mode);
   }
 
   setColors(config) {
@@ -157,8 +216,9 @@ export class Three3DScene {
     this.camera.lookAt(this.lookAt);
   }
 
-  tick() {
+  tick(_time, frame) {
     if (this.xrSession) {
+      this.updateAR(frame);
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -176,7 +236,52 @@ export class Three3DScene {
     }
   }
 
+  updateAR(frame) {
+    if (!frame || !this.hitTestSource) return;
+    const space = this.renderer.xr.getReferenceSpace();
+    if (!space) return;
+    const hits = frame.getHitTestResults(this.hitTestSource);
+    if (!hits.length) {
+      if (!this.arPlaced) {
+        this.reticle.visible = false;
+        this.setArMode('scanning');
+      }
+      return;
+    }
+    const pose = hits[0].getPose(space);
+    if (!pose) return;
+    this.reticle.visible = !this.arPlaced || this.arMoving;
+    this.reticle.matrix.fromArray(pose.transform.matrix);
+    if (!this.arPlaced) this.setArMode('placing');
+    if (this.arMoving) this.placeAtReticle();
+  }
+
+  placeAtReticle() {
+    _hitPos.setFromMatrixPosition(this.reticle.matrix);
+    this.root.position.copy(_hitPos);
+    this.root.quaternion.identity();
+    this.root.visible = true;
+    this.contactShadow.visible = true;
+    this.arPlaced = true;
+  }
+
+  onARSelectStart() {
+    if (!this.reticle.visible && !this.arPlaced) return;
+    this.arMoving = this.arPlaced;
+    this.placeAtReticle();
+    this.setArMode(this.arMoving ? 'moving' : 'placed');
+  }
+
+  onARSelectEnd() {
+    this.arMoving = false;
+    if (this.arPlaced) {
+      this.reticle.visible = false;
+      this.setArMode('placed');
+    }
+  }
+
   onResize() {
+    if (this.xrSession) return;
     const rect = this.canvas.parentElement?.getBoundingClientRect() || this.canvas.getBoundingClientRect();
     const w = Math.max(1, rect.width);
     const h = Math.max(1, rect.height);
@@ -187,6 +292,7 @@ export class Three3DScene {
   }
 
   onPointerDown(e) {
+    if (this.xrSession) return;
     this.canvas.setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pointers.size === 2) {
@@ -196,7 +302,7 @@ export class Three3DScene {
   }
 
   onPointerMove(e) {
-    if (!this.pointers.has(e.pointerId)) return;
+    if (this.xrSession || !this.pointers.has(e.pointerId)) return;
     const prev = this.pointers.get(e.pointerId);
     const dx = e.clientX - prev.x;
     const dy = e.clientY - prev.y;
@@ -218,6 +324,7 @@ export class Three3DScene {
   }
 
   onWheel(e) {
+    if (this.xrSession) return;
     e.preventDefault();
     this.target.radius = THREE.MathUtils.clamp(this.target.radius + e.deltaY * 0.002, 1.4, 4.2);
   }
@@ -234,22 +341,107 @@ export class Three3DScene {
     return data;
   }
 
-  async enterAR() {
-    if (!navigator.xr || !window.isSecureContext) throw new Error('AR needs HTTPS in Chrome or Safari');
-    const supported = await navigator.xr.isSessionSupported('immersive-ar');
-    if (!supported) throw new Error('This browser does not support WebXR AR');
-    this.xrSession = await navigator.xr.requestSession('immersive-ar', {
-      optionalFeatures: ['hit-test', 'local-floor']
+  async exportUSDZ() {
+    if (!this.model) throw new Error('3D model is still loading');
+    const wrapper = new THREE.Group();
+    const clone = this.model.clone(true);
+    clone.traverse((obj) => {
+      if (obj.isMesh && obj.material) obj.material = obj.material.clone();
     });
+    wrapper.add(clone);
+    wrapper.scale.setScalar(this.worldScale * (this.scalePercent / 100));
+    const exporter = new USDZExporter();
+    return exporter.parseAsync(wrapper, { quickLookCompatible: true, maxTextureSize: 1024 });
+  }
+
+  async enterAR({ overlay } = {}) {
+    if (!navigator.xr) throw new Error('WebXR is not available in this browser');
+    this.overlay = overlay || null;
+    const options = {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'local-floor', 'light-estimation'],
+      ...(overlay ? { domOverlay: { root: overlay } } : {})
+    };
+    this.setArMode('launching');
+    try {
+      this.xrSession = await navigator.xr.requestSession('immersive-ar', options);
+    } catch {
+      this.xrSession = await navigator.xr.requestSession('immersive-ar', {
+        optionalFeatures: ['hit-test', 'dom-overlay', 'local-floor', 'light-estimation'],
+        ...(overlay ? { domOverlay: { root: overlay } } : {})
+      });
+    }
+    this.renderer.setPixelRatio(1);
     await this.renderer.xr.setSession(this.xrSession);
+    this.arPlaced = false;
+    this.arMoving = false;
+    this.root.visible = false;
     this.ground.visible = false;
+    this.contactShadow.visible = false;
+    this.reticle.visible = false;
+    this.applyCurrentScale();
     document.body.classList.add('is-ar');
-    this.xrSession.addEventListener('end', () => {
-      this.xrSession = null;
-      this.ground.visible = true;
-      document.body.classList.remove('is-ar');
-      this.dirty = true;
+    this.setArMode('scanning');
+
+    try {
+      this.xrLight = new XREstimatedLight(this.renderer);
+      this.xrLight.addEventListener('estimationstart', () => {
+        this.scene.add(this.xrLight);
+        if (this.xrLight.environment) this.scene.environment = this.xrLight.environment;
+        this.keyLight.visible = false;
+        this.hemi.visible = false;
+      });
+      this.xrLight.addEventListener('estimationend', () => {
+        this.scene.remove(this.xrLight);
+        this.scene.environment = this.studioEnv;
+        this.keyLight.visible = true;
+        this.hemi.visible = true;
+      });
+    } catch {
+      this.xrLight = null;
+    }
+
+    try {
+      const viewerSpace = await this.xrSession.requestReferenceSpace('viewer');
+      this.hitTestSource = await this.xrSession.requestHitTestSource({ space: viewerSpace });
+    } catch {
+      this.hitTestSource = null;
+    }
+    this.xrSession.addEventListener('selectstart', this.onARSelectStart);
+    this.xrSession.addEventListener('selectend', this.onARSelectEnd);
+    this.xrSession.addEventListener('select', () => {
+      if (!this.arPlaced && this.reticle.visible) this.onARSelectStart();
     });
+    this.xrSession.addEventListener('end', () => this.onAREnd());
+  }
+
+  async exitAR() {
+    if (this.xrSession) {
+      try { await this.xrSession.end(); } catch { /* already ending */ }
+    }
+  }
+
+  onAREnd() {
+    this.xrSession = null;
+    this.hitTestSource = null;
+    this.arPlaced = false;
+    this.arMoving = false;
+    this.reticle.visible = false;
+    this.contactShadow.visible = false;
+    this.root.visible = true;
+    this.root.position.set(0, 0, 0);
+    this.root.quaternion.identity();
+    this.ground.visible = true;
+    this.keyLight.visible = true;
+    this.hemi.visible = true;
+    this.scene.environment = this.studioEnv;
+    if (this.xrLight) this.scene.remove(this.xrLight);
+    document.body.classList.remove('is-ar');
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+    this.applyCurrentScale();
+    this.onResize();
+    this.setArMode('idle');
+    this.dirty = true;
   }
 
   dispose() {
