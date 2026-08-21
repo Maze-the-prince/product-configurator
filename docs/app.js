@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/addons/loaders/GLTFLoader.js';
+import { XREstimatedLight } from './vendor/addons/webxr/XREstimatedLight.js';
 
 const $ = (sel) => document.querySelector(sel);
 function setText(sel, value) {
@@ -54,14 +55,20 @@ let exploded = false;
 let target = { theta: -0.55, phi: 1.12, radius: PHONE_GPU ? 2.05 : 2.35 };
 let orbit = { ...target };
 let dragging = false, dragX = 0, dragY = 0;
-let xrSession = null, hitTestSource = null, hitTestSourceRequested = false;
 let pointers = new Map();
 let pinchStart = 0;
 let nativeArUrl = null;
 let nativeArTimer = 0;
+let xrSession = null, hitTestSource = null, hitTestSourceRequested = false, touchHitSource = null;
 let arPlaced = false;
+let arHitStable = 0;
+let arLastHitY = null;
 let studioEnv = null;
 let hemiLight, keyLight, fillLight, ambLight;
+let xrEstimatedLight = null;
+let contactShadow = null;
+let arTargetPos = new THREE.Vector3();
+let arTargetYaw = 0;
 let arController = null;
 let dirty = true;
 const lookAtCenter = new THREE.Vector3(0, .52, 0);
@@ -156,12 +163,39 @@ function setupThree() {
   scene.add(root);
   buildEquipment();
 
-  reticle = new THREE.Mesh(new THREE.RingGeometry(.10, .13, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
+  reticle = new THREE.Group();
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  const reticleRing = new THREE.Mesh(
+    new THREE.RingGeometry(.11, .135, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .92, depthTest: false })
+  );
+  const reticleDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(.11, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .16, depthTest: false })
+  );
+  reticle.add(reticleDisc, reticleRing);
+  scene.add(reticle);
 
-  arController = renderer.xr.getController(0);
-  arController.addEventListener('select', placeARAnchor);
-  scene.add(arController);
+  contactShadow = makeContactShadow();
+  contactShadow.visible = false;
+  root.add(contactShadow);
+
+  xrEstimatedLight = new XREstimatedLight(renderer, true);
+  xrEstimatedLight.visible = false;
+  scene.add(xrEstimatedLight);
+  xrEstimatedLight.addEventListener('estimationstart', () => {
+    if (!xrSession) return;
+    xrEstimatedLight.visible = true;
+    if (xrEstimatedLight.environment) scene.environment = xrEstimatedLight.environment;
+    if (hemiLight) hemiLight.visible = false;
+    if (keyLight) keyLight.visible = false;
+    if (fillLight) fillLight.visible = false;
+    if (ambLight) ambLight.visible = false;
+  });
+  xrEstimatedLight.addEventListener('estimationend', () => {
+    xrEstimatedLight.visible = false;
+  });
 
   canvas.addEventListener('pointerdown', e => {
     if (xrSession) return;
@@ -601,6 +635,10 @@ function render(_time, frame) {
   const lidMoving = lidGroup ? approachRot(lidGroup, 'x', exploded ? -1.15 : 0, .08) : false;
   if (xrSession) {
     updateXRHitTest(frame);
+    if (arPlaced) {
+      root.position.lerp(arTargetPos, 0.22);
+      root.rotation.y += (arTargetYaw - root.rotation.y) * 0.2;
+    }
     renderer.render(scene, camera);
     return;
   }
@@ -681,22 +719,25 @@ async function launchWebXR() {
   const overlay = $('#arOverlay');
   overlay?.classList.remove('hidden');
   const options = {
-    optionalFeatures: ['hit-test', 'dom-overlay'],
+    optionalFeatures: ['hit-test', 'light-estimation', 'dom-overlay'],
     ...(overlay ? { domOverlay: { root: overlay } } : {})
   };
   try {
     xrSession = await navigator.xr.requestSession('immersive-ar', options);
     renderer.setPixelRatio(1);
-    renderer.xr.setFramebufferScaleFactor(PHONE_GPU ? 0.75 : 1);
+    renderer.xr.setFramebufferScaleFactor(0.88);
     renderer.xr.setReferenceSpaceType('local');
     await renderer.xr.setSession(xrSession);
     document.body.classList.add('is-ar');
     arPlaced = false;
+    arHitStable = 0;
+    arLastHitY = null;
     setARPresentation(true);
     root.visible = false;
     reticle.visible = false;
-    setText('#arBanner', 'Move your phone to find the floor. The bin places itself, then tap to move it.');
-    xrSession.addEventListener('select', placeARAnchor);
+    if (contactShadow) contactShadow.visible = false;
+    setText('#arBanner', 'Scan the floor, then tap to place.');
+    xrSession.addEventListener('select', onARSelect);
     xrSession.addEventListener('end', onAREnd);
     return true;
   } catch (err) {
@@ -712,27 +753,54 @@ async function launchWebXR() {
 
 function setARPresentation(on) {
   renderer.shadowMap.enabled = !on;
-  scene.environment = on ? null : studioEnv;
-  renderer.toneMapping = on ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+  if (!on) scene.environment = studioEnv;
+  renderer.toneMapping = on ? THREE.LinearToneMapping : THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = on ? 1 : 1.12;
-  if (hemiLight) hemiLight.intensity = on ? 0.9 : 2.2;
-  if (ambLight) ambLight.intensity = on ? 0.2 : 0.55;
+  if (hemiLight) { hemiLight.intensity = on ? 0.7 : 2.2; hemiLight.visible = true; }
+  if (ambLight) { ambLight.intensity = on ? 0.18 : 0.55; ambLight.visible = true; }
   if (keyLight) {
-    keyLight.intensity = on ? 0.4 : 1.65;
+    keyLight.intensity = on ? 0.35 : 1.65;
     keyLight.castShadow = !on;
+    keyLight.visible = true;
   }
   if (fillLight) fillLight.visible = !on;
   if (floor) floor.visible = !on;
   if (grid) grid.visible = !on;
   if (dimensionGroup) dimensionGroup.visible = false;
+  if (contactShadow) contactShadow.visible = on && arPlaced;
+  if (xrEstimatedLight) xrEstimatedLight.visible = false;
   [bodyMat, lidMat, glbBodyMat, glbLidMat].forEach((mat) => {
     if (!mat) return;
     if ('clearcoat' in mat) mat.clearcoat = on ? 0 : 0.28;
-    if ('envMapIntensity' in mat) mat.envMapIntensity = on ? 0 : 0.45;
+    if ('envMapIntensity' in mat) mat.envMapIntensity = on ? 0.5 : 0.45;
+    if ('roughness' in mat && on) mat.roughness = 0.46;
+    if ('roughness' in mat && !on) mat.roughness = 0.42;
     mat.needsUpdate = true;
   });
-  if (on) renderer.xr.setFramebufferScaleFactor(0.75);
-  else renderer.xr.setFramebufferScaleFactor(1);
+  renderer.xr.setFramebufferScaleFactor(on ? 0.88 : 1);
+}
+
+function makeContactShadow() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(64, 64, 8, 64, 64, 60);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.42)');
+  gradient.addColorStop(0.55, 'rgba(0,0,0,0.16)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 128, 128);
+  const map = new THREE.CanvasTexture(canvas);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.78, 0.62),
+    new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, opacity: 0.85 })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.004;
+  mesh.renderOrder = -1;
+  mesh.name = 'AR_CONTACT_SHADOW';
+  return mesh;
 }
 
 function launchSceneViewer() {
@@ -806,28 +874,30 @@ function cloneForNativeAR(source) {
   return wrap;
 }
 
-function placeARAnchor() {
+function onARSelect() {
+  if (reticle.visible) commitARPlacement(reticle.matrix, true);
+}
+
+function commitARPlacement(matrix, fromTap) {
   if (!xrSession) return;
-  const pos = new THREE.Vector3();
-  if (reticle.visible) pos.setFromMatrixPosition(reticle.matrix);
-  else {
-    const xrCam = renderer.xr.getCamera();
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCam.quaternion);
-    dir.y = 0;
-    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
-    dir.normalize();
-    pos.copy(xrCam.position).addScaledVector(dir, 1.4);
-    pos.y = xrCam.position.y - 1.3;
-  }
-  root.position.copy(pos);
-  root.quaternion.identity();
+  const pos = new THREE.Vector3().setFromMatrixPosition(matrix);
+  if (arLastHitY != null && Math.abs(pos.y - arLastHitY) > 0.45 && !fromTap) return;
+  arLastHitY = pos.y;
+  arTargetPos.copy(pos);
   const xrCam = renderer.xr.getCamera();
-  const dx = xrCam.position.x - root.position.x;
-  const dz = xrCam.position.z - root.position.z;
-  if (dx * dx + dz * dz > 0.0001) root.rotation.y = Math.atan2(dx, dz);
-  root.visible = true;
+  const dx = xrCam.position.x - pos.x;
+  const dz = xrCam.position.z - pos.z;
+  arTargetYaw = (dx * dx + dz * dz > 0.0001) ? Math.atan2(dx, dz) : 0;
+  if (!arPlaced) {
+    root.position.copy(pos);
+    root.quaternion.identity();
+    root.rotation.y = arTargetYaw;
+    root.visible = true;
+  }
   arPlaced = true;
-  setText('#arBanner', 'Tap another spot on the floor to move it.');
+  if (contactShadow) contactShadow.visible = true;
+  reticle.visible = !fromTap;
+  setText('#arBanner', 'Tap the floor to move it.');
 }
 
 function updateXRHitTest(frame) {
@@ -838,24 +908,67 @@ function updateXRHitTest(frame) {
   if (!hitTestSourceRequested) {
     hitTestSourceRequested = true;
     session.requestReferenceSpace('viewer')
-      .then((viewerSpace) => session.requestHitTestSource({ space: viewerSpace }))
-      .then((source) => { hitTestSource = source; })
+      .then((viewerSpace) => Promise.all([
+        session.requestHitTestSource({ space: viewerSpace }),
+        session.requestHitTestSourceForTransientInput ? session.requestHitTestSourceForTransientInput({ profile: 'generic-touchscreen' }) : null
+      ]))
+      .then(([viewerSource, touchSource]) => {
+        hitTestSource = viewerSource;
+        touchHitSource = touchSource;
+      })
       .catch(() => { hitTestSourceRequested = false; });
   }
+
+  let usedTouch = false;
+  if (touchHitSource && frame.getHitTestResultsForTransientInput) {
+    const transients = frame.getHitTestResultsForTransientInput(touchHitSource);
+    for (let i = 0; i < transients.length; i++) {
+      const hit = transients[i].results?.[0];
+      if (!hit) continue;
+      const pose = hit.getPose(referenceSpace);
+      if (!pose) continue;
+      reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.visible = true;
+      commitARPlacement(reticle.matrix, true);
+      usedTouch = true;
+      break;
+    }
+  }
+
   if (hitTestSource) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length) {
       const pose = hits[0].getPose(referenceSpace);
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
-      if (!arPlaced) placeARAnchor();
-    } else if (!arPlaced) reticle.visible = false;
+      if (pose) {
+        if (!usedTouch) {
+          reticle.matrix.fromArray(pose.transform.matrix);
+          reticle.visible = !arPlaced;
+        }
+        const y = pose.transform.position.y;
+        if (arLastHitY == null || Math.abs(y - arLastHitY) < 0.08) arHitStable += 1;
+        else arHitStable = 0;
+        arLastHitY = y;
+        if (!arPlaced && arHitStable >= 10) commitARPlacement(reticle.matrix, false);
+      }
+    } else if (!arPlaced) {
+      reticle.visible = false;
+      arHitStable = 0;
+    }
   }
 }
 function onAREnd() {
-  xrSession = null; hitTestSource = null; hitTestSourceRequested = false; reticle.visible = false;
+  xrSession = null; hitTestSource = null; touchHitSource = null; hitTestSourceRequested = false;
+  reticle.visible = false;
   arPlaced = false;
+  arHitStable = 0;
+  arLastHitY = null;
   setARPresentation(false);
+  if (contactShadow) contactShadow.visible = false;
+  if (hemiLight) hemiLight.visible = true;
+  if (keyLight) keyLight.visible = true;
+  if (fillLight) fillLight.visible = true;
+  if (ambLight) ambLight.visible = true;
+  scene.environment = studioEnv;
   root.visible = true; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.quaternion.identity();
   renderer.setPixelRatio(DESKTOP_DPR);
   document.body.classList.remove('is-ar');

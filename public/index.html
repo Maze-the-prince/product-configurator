@@ -106,7 +106,7 @@
     <div class="modal">
       <div class="modal-head"><h2>View in AR</h2><button class="icon-btn" id="arHelpClose" type="button">×</button></div>
       <div class="modal-body">
-        <p id="arHelpCopy" style="line-height:1.6;color:#475569;margin-top:0">On iPhone use Safari. On Android use Chrome. This page must stay on HTTPS.</p>
+        <p id="arHelpCopy" style="line-height:1.6;color:#475569;margin-top:0">On iPhone use Safari (Quick Look). On Android use Chrome — scan the floor, then tap to place.</p>
         <div class="codebox" id="arLinkBox"></div>
         <div class="modal-actions"><button class="btn" id="copyArLink" type="button">Copy link</button><button class="btn btn-primary" id="arRetryBtn" type="button">Try AR again</button></div>
       </div>
@@ -114,7 +114,7 @@
   </div>
 
   <div id="arOverlay" class="ar-overlay hidden">
-    <p id="arBanner" class="ar-banner">Move your phone to find the floor, then tap to place.</p>
+    <p id="arBanner" class="ar-banner">Scan the floor, then tap to place.</p>
     <button class="btn btn-dark" id="arExitBtn" type="button">Exit AR</button>
   </div>
   <a id="arQuickLook" class="ar-quicklook" rel="ar" href="assets/model.glb">
@@ -128,6 +128,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=21"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>
