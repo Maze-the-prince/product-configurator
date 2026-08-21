@@ -77,7 +77,6 @@ export function App() {
 
   const onArState = useCallback((mode) => {
     setArMode(mode);
-    setArActive(mode !== 'idle');
   }, []);
 
   const onReady = useCallback((scene) => {
@@ -149,12 +148,10 @@ export function App() {
       return;
     }
     try {
-      setArActive(true);
       setArMode('launching');
       await sceneRef.current.enterAR({ overlay: overlayRef.current });
     } catch (err) {
       setArMode('idle');
-      setArActive(false);
       setArHelp(err?.message || 'Open this HTTPS page in Chrome on Android to place, move, and rescale in AR.');
     }
   }
@@ -308,7 +305,7 @@ export function App() {
         </div>
       </footer>
 
-      <div id="arOverlay" ref={overlayRef} className={`ar-overlay${arActive && PLATFORM.android ? ' is-active' : ''}`}>
+      <div id="arOverlay" ref={overlayRef} className={`ar-overlay${PLATFORM.android && arMode !== 'idle' ? ' is-active' : ''}`}>
         <p className="ar-banner">
           <StateIcon /> {arMeta.label} · {config.scale}%
         </p>

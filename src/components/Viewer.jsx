@@ -10,10 +10,17 @@ export function Viewer({ config, scalePercent, onReady, onError, onArState }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
-    const scene = new Three3DScene(canvas, {
-      modelUrl: `${import.meta.env.BASE_URL}assets/model.glb`,
-      onArState: (mode) => arStateRef.current?.(mode)
-    });
+    let scene;
+    try {
+      scene = new Three3DScene(canvas, {
+        modelUrl: `${import.meta.env.BASE_URL}assets/model.glb`,
+        onArState: (mode) => arStateRef.current?.(mode)
+      });
+    } catch (err) {
+      console.error(err);
+      onError?.(err);
+      return undefined;
+    }
     sceneRef.current = scene;
     scene.load()
       .then(() => {
