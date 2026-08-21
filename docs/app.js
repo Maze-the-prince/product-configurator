@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from './vendor/addons/utils/BufferGeometryUtils.js';
 import { XREstimatedLight } from './vendor/addons/webxr/XREstimatedLight.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -31,7 +32,7 @@ const SHARED_PARAMS = [
 ];
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 const PHONE_GPU = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-const DESKTOP_DPR = Math.min(devicePixelRatio || 1, 1.75);
+const DESKTOP_DPR = Math.min(devicePixelRatio || 1, PHONE_GPU ? 1.35 : 1.75);
 const ASSET_VERSION = '2';
 const DEFAULT_GLB_URL = new URL(`./assets/model.glb?v=${ASSET_VERSION}`, import.meta.url).href;
 const AD_LINE = 'Transform your 3D models into configurable views for your clients';
@@ -70,6 +71,7 @@ let contactShadow = null;
 let arTargetPos = new THREE.Vector3();
 let arTargetYaw = 0;
 let arController = null;
+let loopOn = false;
 let dirty = true;
 const lookAtCenter = new THREE.Vector3(0, .52, 0);
 let moneyFmt;
@@ -92,7 +94,11 @@ async function init() {
   try {
     setupThree();
     updateAll();
-    tryLoadPreviewGlb().then((ok) => { if (ok) updateAll(); scheduleNativeArFile(); }).catch((err) => console.error(err));
+    tryLoadPreviewGlb().then((ok) => {
+      if (ok) updateAll();
+      scheduleNativeArFile();
+      if (new URL(location.href).searchParams.get('ar') === 'webxr') startAR(true);
+    }).catch((err) => console.error(err));
   } catch (err) {
     console.error('[EquipXR] 3D view failed', err);
     $('#viewerError')?.classList.remove('hidden');
@@ -102,7 +108,16 @@ async function init() {
   navigator.serviceWorker?.getRegistrations?.().then((regs) => regs.forEach((reg) => reg.unregister())).catch(() => {});
 }
 
-function markDirty() { dirty = true; }
+function markDirty() {
+  dirty = true;
+  ensureLoop();
+}
+
+function ensureLoop() {
+  if (loopOn || !renderer) return;
+  loopOn = true;
+  renderer.setAnimationLoop(render);
+}
 
 function pointerSpread() {
   const pts = [...pointers.values()];
@@ -115,14 +130,21 @@ function setupThree() {
   if (!canvas) throw new Error('Missing viewer canvas');
   renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: DESKTOP_DPR < 1.5,
+    antialias: !PHONE_GPU && DESKTOP_DPR < 1.5,
     alpha: true,
+    stencil: false,
     preserveDrawingBuffer: false,
     powerPreference: 'high-performance'
   });
   renderer.setPixelRatio(DESKTOP_DPR);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = PHONE_GPU ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.xr.enabled = true;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
@@ -130,29 +152,36 @@ function setupThree() {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(35, 1, 0.05, 100);
-  studioEnv = makeStudioEnvironment();
-  scene.environment = studioEnv;
+  if (PHONE_GPU) {
+    studioEnv = null;
+    scene.environment = null;
+  } else {
+    studioEnv = makeStudioEnvironment();
+    scene.environment = studioEnv;
+  }
 
-  hemiLight = new THREE.HemisphereLight(0xffffff, 0xb8c0c8, 2.2);
+  hemiLight = new THREE.HemisphereLight(0xffffff, 0xb8c0c8, PHONE_GPU ? 1.6 : 2.2);
   scene.add(hemiLight);
-  keyLight = new THREE.DirectionalLight(0xffffff, 1.65);
+  keyLight = new THREE.DirectionalLight(0xffffff, PHONE_GPU ? 1.15 : 1.65);
   keyLight.position.set(2.2, 5.2, 2.4);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(PHONE_GPU ? 1024 : 2048, PHONE_GPU ? 1024 : 2048);
+  keyLight.shadow.mapSize.set(PHONE_GPU ? 512 : 2048, PHONE_GPU ? 512 : 2048);
   keyLight.shadow.bias = -0.00015;
   keyLight.shadow.normalBias = 0.035;
   keyLight.shadow.camera.near = 1;
   keyLight.shadow.camera.far = 16;
   scene.add(keyLight);
-  ambLight = new THREE.AmbientLight(0xffffff, 0.55);
-  scene.add(ambLight);
-  fillLight = new THREE.DirectionalLight(0xe8eef5, 0.55);
-  fillLight.position.set(-3, 2.4, -2);
-  scene.add(fillLight);
+  if (!PHONE_GPU) {
+    ambLight = new THREE.AmbientLight(0xffffff, 0.55);
+    scene.add(ambLight);
+    fillLight = new THREE.DirectionalLight(0xe8eef5, 0.55);
+    fillLight.position.set(-3, 2.4, -2);
+    scene.add(fillLight);
+  }
 
-  floor = new THREE.Mesh(new THREE.CircleGeometry(2.4, 48), new THREE.ShadowMaterial({ opacity: .13 }));
+  floor = new THREE.Mesh(new THREE.CircleGeometry(2.4, PHONE_GPU ? 24 : 48), new THREE.ShadowMaterial({ opacity: .13 }));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-  grid = new THREE.GridHelper(3.6, 18, 0xcfd6df, 0xe5e9ef);
+  grid = new THREE.GridHelper(3.6, PHONE_GPU ? 10 : 18, 0xcfd6df, 0xe5e9ef);
   grid.material.opacity = .26; grid.material.transparent = true; grid.position.y = .003; scene.add(grid);
 
   bodyMat = makeGlossPlastic(RALS.ral7021.color);
@@ -181,21 +210,22 @@ function setupThree() {
   contactShadow.visible = false;
   root.add(contactShadow);
 
-  xrEstimatedLight = new XREstimatedLight(renderer, true);
-  xrEstimatedLight.visible = false;
-  scene.add(xrEstimatedLight);
-  xrEstimatedLight.addEventListener('estimationstart', () => {
-    if (!xrSession) return;
-    xrEstimatedLight.visible = true;
-    if (xrEstimatedLight.environment) scene.environment = xrEstimatedLight.environment;
-    if (hemiLight) hemiLight.visible = false;
-    if (keyLight) keyLight.visible = false;
-    if (fillLight) fillLight.visible = false;
-    if (ambLight) ambLight.visible = false;
-  });
-  xrEstimatedLight.addEventListener('estimationend', () => {
+  if (!PHONE_GPU) {
+    xrEstimatedLight = new XREstimatedLight(renderer, false);
     xrEstimatedLight.visible = false;
-  });
+    scene.add(xrEstimatedLight);
+    xrEstimatedLight.addEventListener('estimationstart', () => {
+      if (!xrSession) return;
+      xrEstimatedLight.visible = true;
+      if (hemiLight) hemiLight.visible = false;
+      if (keyLight) keyLight.visible = false;
+      if (fillLight) fillLight.visible = false;
+      if (ambLight) ambLight.visible = false;
+    });
+    xrEstimatedLight.addEventListener('estimationend', () => {
+      xrEstimatedLight.visible = false;
+    });
+  }
 
   canvas.addEventListener('pointerdown', e => {
     if (xrSession) return;
@@ -250,7 +280,7 @@ function setupThree() {
     new ResizeObserver(() => resize()).observe($('#viewerCard'));
   }
   requestAnimationFrame(resize);
-  renderer.setAnimationLoop(render);
+  ensureLoop();
 }
 
 function box(name, size, material, pos, parent, cast = true) {
@@ -400,14 +430,11 @@ function makeStudioEnvironment() {
 }
 
 function makeGlossPlastic(hex) {
-  return new THREE.MeshPhysicalMaterial({
+  return new THREE.MeshStandardMaterial({
     color: hex,
-    metalness: 0,
-    roughness: 0.42,
-    clearcoat: 0.28,
-    clearcoatRoughness: 0.38,
-    reflectivity: 0.35,
-    envMapIntensity: 0.45,
+    metalness: 0.02,
+    roughness: 0.4,
+    envMapIntensity: PHONE_GPU ? 0.2 : 0.5,
     flatShading: false,
     vertexColors: false,
     side: THREE.FrontSide
@@ -448,6 +475,55 @@ function preparePreviewMeshes(model) {
     if (wheelParts.has(obj)) obj.material = glbHwMat;
     else obj.material = meshRole(obj) === 'lid' ? glbLidMat : glbBodyMat;
   });
+  collapsePreviewMeshes(model);
+}
+
+function collapsePreviewMeshes(model) {
+  const buckets = { body: [], lid: [], hardware: [] };
+  model.updateMatrixWorld(true);
+  const wheelParts = new Set();
+  model.traverse((obj) => {
+    if (isWheelName(obj.name)) obj.traverse((child) => wheelParts.add(child));
+  });
+  const meshes = [];
+  model.traverse((obj) => { if (obj.isMesh) meshes.push(obj); });
+  for (const obj of meshes) {
+    const role = wheelParts.has(obj) ? 'hardware' : meshRole(obj);
+    let geo = obj.geometry.clone();
+    if (geo.index) geo = geo.toNonIndexed();
+    ['uv', 'uv2', 'color', 'tangent'].forEach((name) => {
+      if (geo.getAttribute(name)) geo.deleteAttribute(name);
+    });
+    geo.applyMatrix4(obj.matrixWorld);
+    buckets[role].push(geo);
+  }
+  while (model.children.length) model.remove(model.children[0]);
+  const mats = { body: glbBodyMat, lid: glbLidMat, hardware: glbHwMat };
+  const names = { body: 'BODY', lid: 'LID', hardware: 'WHEEL' };
+  for (const role of ['body', 'lid', 'hardware']) {
+    if (!buckets[role].length) continue;
+    const merged = mergeGeometries(buckets[role], false);
+    buckets[role].forEach((geo) => geo.dispose());
+    if (!merged) continue;
+    merged.computeVertexNormals();
+    const mesh = new THREE.Mesh(merged, mats[role]);
+    mesh.name = names[role];
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.updateMatrix();
+    model.add(mesh);
+  }
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
+}
+
+function disposeGroup(group) {
+  if (!group) return;
+  group.traverse((obj) => { obj.geometry?.dispose(); });
+  group.parent?.remove(group);
 }
 
 function meshRole(obj) {
@@ -476,19 +552,19 @@ function mountPreviewGlb(sceneObj, url) {
   glbGroup = sceneObj;
   glbGroup.name = 'previewGlb';
   preparePreviewMeshes(glbGroup);
-  const box = sitModelOnGround(glbGroup);
+  sitModelOnGround(glbGroup);
   root.add(glbGroup);
   glbLoaded = true;
-  chassisGroup.visible = false;
-
-  const size = box.getSize(new THREE.Vector3());
+  if (chassisGroup) {
+    disposeGroup(chassisGroup);
+    chassisGroup = null;
+    lidGroup = null;
+    dimensionGroup = null;
+  }
+  renderer.shadowMap.needsUpdate = true;
   let meshCount = 0;
   glbGroup.traverse((obj) => { if (obj.isMesh) meshCount += 1; });
-  console.info(`[EquipXR] Loaded ${url}`, {
-    sizeMeters: { x: +size.x.toFixed(3), y: +size.y.toFixed(3), z: +size.z.toFixed(3) },
-    meshes: meshCount
-  });
-  toast(`Loaded ${url} (meters, 1:1)`);
+  console.info(`[EquipXR] Loaded ${url}`, { meshes: meshCount });
   markDirty();
 }
 
@@ -661,7 +737,11 @@ function render(_time, frame) {
   if (dirty || orbiting || lidMoving) {
     renderer.render(scene, camera);
     dirty = false;
+    return;
   }
+
+  renderer.setAnimationLoop(null);
+  loopOn = false;
 }
 
 function resize() {
@@ -687,7 +767,7 @@ function money(v) {
   return moneyFmt.format(v);
 }
 
-async function startAR() {
+async function startAR(forceWebXR = false) {
   track('ar_launch', { sku: config.computed?.sku });
   if (isIOS()) {
     if (!isAppleSafari()) {
@@ -696,6 +776,7 @@ async function startAR() {
     }
     return launchQuickLookAR();
   }
+  if (isAndroid() && !forceWebXR) return launchSceneViewer();
   if (await launchWebXR()) return;
   if (isAndroid()) return launchSceneViewer();
   showARHelp('Open this HTTPS page in Safari on iPhone, or Chrome on Android, then tap View in AR.');
@@ -728,6 +809,7 @@ async function launchWebXR() {
     renderer.xr.setFramebufferScaleFactor(0.88);
     renderer.xr.setReferenceSpaceType('local');
     await renderer.xr.setSession(xrSession);
+    ensureLoop();
     document.body.classList.add('is-ar');
     arPlaced = false;
     arHitStable = 0;
@@ -777,7 +859,7 @@ function setARPresentation(on) {
     if ('roughness' in mat && !on) mat.roughness = 0.42;
     mat.needsUpdate = true;
   });
-  renderer.xr.setFramebufferScaleFactor(on ? 0.88 : 1);
+  renderer.xr.setFramebufferScaleFactor(on ? 0.7 : 1);
 }
 
 function makeContactShadow() {
@@ -804,11 +886,10 @@ function makeContactShadow() {
 }
 
 function launchSceneViewer() {
-  const file = DEFAULT_GLB_URL;
+  const file = new URL(`assets/model.glb?v=${ASSET_VERSION}`, location.href).href;
   const title = encodeURIComponent(product.productName || 'Product');
-  const fallback = encodeURIComponent(location.href);
-  toast('Opening AR… colours follow the 3D file if live WebXR is unavailable.');
-  location.href = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(file)}&mode=ar_preferred&resizable=false&title=${title}#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
+  const fallback = encodeURIComponent(`${location.origin}${location.pathname}?ar=webxr`);
+  location.href = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(file)}&mode=ar_only&resizable=false&title=${title}#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
 }
 
 async function launchQuickLookAR() {
