@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="3D configurator for a 240 litre waste bin — body colour, lid colour, and AR view" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=23" />
+  <link rel="stylesheet" href="styles.css?v=24" />
   <title>CityLine 240 — 3D configurator</title>
 </head>
 <body>
@@ -25,17 +25,24 @@
     <div class="shop-body">
       <section class="shop-stage">
         <div class="viewer-card" id="viewerCard">
-          <canvas id="viewerCanvas"></canvas>
+          <needle-engine
+            id="needleViewer"
+            camera-controls
+            contactshadows
+            environment-image="studio"
+            background-color="#f3f4f6"
+            hide-loading-overlay
+          ></needle-engine>
           <p class="orbit-caption" id="orbitHint">Drag to rotate · 360°</p>
           <p class="viewer-error hidden" id="viewerError">3D view could not start. Open this page in Chrome or Safari.</p>
         </div>
-        <a class="ar-link" id="arBtn" rel="ar">
+        <button class="ar-link" id="arBtn" type="button">
           <svg class="ar-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M20 8V5.5A1.5 1.5 0 0 0 18.5 4H16M4 16v2.5A1.5 1.5 0 0 0 5.5 20H8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/>
             <path fill="currentColor" d="M12 6.4 17 9.2v5.6L12 17.6 7 14.8V9.2L12 6.4zm0 1.85-3.2 1.8v3.9L12 15.75l3.2-1.8v-3.9L12 8.25z"/>
           </svg>
           View in AR
-        </a>
+        </button>
         <p class="shop-ad">Let clients change <strong>colour</strong>, <strong>size</strong>, <strong>shape</strong>, and product <strong>variations</strong> in a live 3D view — then share, view in AR, download a PDF, and request an offer.</p>
       </section>
 
@@ -106,28 +113,22 @@
     <div class="modal">
       <div class="modal-head"><h2>View in AR</h2><button class="icon-btn" id="arHelpClose" type="button">×</button></div>
       <div class="modal-body">
-        <p id="arHelpCopy" style="line-height:1.6;color:#475569;margin-top:0">On iPhone use Safari (Quick Look). On Android use Chrome — scan the floor, then tap to place.</p>
+        <p id="arHelpCopy" style="line-height:1.6;color:#475569;margin-top:0">Needle Engine AR: Chrome on Android or Safari on iPhone. Scan the floor, then tap to place. Your live colours come with you.</p>
         <div class="codebox" id="arLinkBox"></div>
         <div class="modal-actions"><button class="btn" id="copyArLink" type="button">Copy link</button><button class="btn btn-primary" id="arRetryBtn" type="button">Try AR again</button></div>
       </div>
     </div>
   </div>
 
-  <div id="arOverlay" class="ar-overlay hidden">
-    <p id="arBanner" class="ar-banner">Scan the floor, then tap to place.</p>
-    <button class="btn btn-dark" id="arExitBtn" type="button">Exit AR</button>
-  </div>
-  <a id="arQuickLook" class="ar-quicklook" rel="ar" href="assets/model.glb">
-    <img alt="240 L waste bin" width="1" height="1" />
-  </a>
   <div class="toast hidden" id="toast"></div>
   <script type="importmap">
   {
     "imports": {
-      "three": "./vendor/three.module.js"
+      "three": "https://cdn.jsdelivr.net/npm/@needle-tools/engine/dist/three.min.js",
+      "@needle-tools/engine": "https://cdn.jsdelivr.net/npm/@needle-tools/engine/dist/needle-engine.min.js"
     }
   }
   </script>
-  <script type="module" src="app.js?v=25"></script>
+  <script type="module" src="app.js?v=27"></script>
 </body>
 </html>
