@@ -113,26 +113,7 @@ a { color: inherit; }
   text-decoration: none; cursor: pointer;
 }
 .ar-link:hover { color: var(--accent); }
-.ar-icon { width: 22px; height: 22px; display: block; flex: 0 0 auto; }
-.ar-dock { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 12px; }
-.ar-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.ar-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  min-height: 32px; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid var(--line); background: #fff; color: #64748b;
-  font-size: 11px; font-weight: 800; letter-spacing: .02em;
-}
-.ar-chip.is-live { border-color: #111; color: #111; background: #fff7ed; }
-.ar-chip.is-state { border-color: #111; color: #111; }
-.ar-system-hint { margin: 0; color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; max-width: 22rem; }
-.scale-slider { width: 100%; accent-color: var(--accent); }
-.scale-ticks { display: flex; justify-content: space-between; margin-top: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.ar-quicklook {
-  position: absolute;
-  width: 1px; height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
+.ar-icon { width: 1px; height: 1px; position: absolute; opacity: 0; overflow: hidden; }
 .shop-foot { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding-top: 28px; flex-wrap: wrap; }
 .shop-foot-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .request-btn {
@@ -269,7 +250,7 @@ body.is-ar .shop-head,
 body.is-ar .shop-options,
 body.is-ar .shop-foot,
 body.is-ar .shop-ad,
-body.is-ar .ar-dock,
+body.is-ar .ar-link,
 body.is-ar .orbit-caption { display: none !important; }
 body.is-ar .shop { padding: 0; max-width: none; }
 body.is-ar .viewer-card {
@@ -309,7 +290,7 @@ body.is-ar .viewer-card {
 }
 
 @media print {
-  .shop-tools, .shop-foot, .orbit-hint, .ar-link, .ar-dock { display: none !important; }
+  .shop-tools, .shop-foot, .orbit-hint, .ar-link { display: none !important; }
   body { background: white; }
   .viewer-card { min-height: 520px; box-shadow: none; border: 0; }
 }
