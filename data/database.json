@@ -1,0 +1,281 @@
+{
+  "product": {
+    "manufacturer": "Innovio Solutions",
+    "productName": "240 L waste bin",
+    "skuPrefix": "CL240",
+    "basePrice": 185,
+    "currency": "USD",
+    "width": 580,
+    "depth": 735,
+    "height": 1070,
+    "contactEmail": "mazenbanat@outlook.com",
+    "accent": "#c1121c",
+    "familyName": "CityLine_240_WasteBin",
+    "familyCategory": "Specialty Equipment",
+    "omniClass": "23.27.19.14",
+    "masterFormat": "32 33 00",
+    "assemblyCode": "G2040",
+    "ifcClass": "IfcFurniture",
+    "keynote": "32 33 00.A",
+    "productUrl": "https://example.com/cityline-240",
+    "lod": "350",
+    "hostMethod": "Level",
+    "updatedAt": "2026-08-21T00:00:00.000Z"
+  },
+  "quotes": [
+    {
+      "id": "Q-0001",
+      "createdAt": "2026-08-20T09:30:00.000Z",
+      "name": "Demo Specifier",
+      "company": "Harbour Civic Works",
+      "email": "bim@example.com",
+      "phone": "+000 000 000",
+      "notes": "Need loadable .rfa for Revit 2025, RAL 7021 body and RAL 3020 lid.",
+      "revitVersion": "2025",
+      "projectName": "Waterfront streetscape",
+      "configuration": {
+        "product": {
+          "manufacturer": "Innovio Solutions",
+          "name": "240 L waste bin"
+        },
+        "configuration": {
+          "body": "ral7021",
+          "lid": "ral3020",
+          "label": "YOUR BRAND",
+          "logoData": null,
+          "computed": {
+            "price": 185,
+            "sku": "CL240-B7021-L3020",
+            "volumeL": 240,
+            "weightKG": 14,
+            "dimensions": "580 × 735 × 1070 mm"
+          }
+        },
+        "generatedAt": "2026-08-20T09:30:00.000Z"
+      },
+      "status": "New"
+    }
+  ],
+  "events": [
+    {
+      "id": "E-seed-1",
+      "createdAt": "2026-08-20T08:00:00.000Z",
+      "type": "view",
+      "payload": {
+        "source": "seed"
+      }
+    },
+    {
+      "id": "E-seed-2",
+      "createdAt": "2026-08-20T08:05:00.000Z",
+      "type": "view",
+      "payload": {
+        "source": "seed"
+      }
+    },
+    {
+      "id": "E-seed-3",
+      "createdAt": "2026-08-20T08:08:00.000Z",
+      "type": "ar_launch",
+      "payload": {
+        "source": "seed"
+      }
+    },
+    {
+      "id": "E-seed-4",
+      "createdAt": "2026-08-20T08:10:00.000Z",
+      "type": "share",
+      "payload": {
+        "source": "seed"
+      }
+    },
+    {
+      "id": "E-mt39ua6x-57438",
+      "createdAt": "2026-08-21T18:17:05.817Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt39usdp-767e6",
+      "createdAt": "2026-08-21T18:17:29.389Z",
+      "type": "bim_download",
+      "payload": {
+        "format": "type_catalog",
+        "sku": "CL240-B8017-L9004"
+      }
+    },
+    {
+      "id": "E-mt39y8ir-d5777",
+      "createdAt": "2026-08-21T18:20:10.275Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt39yagk-af909",
+      "createdAt": "2026-08-21T18:20:12.788Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3abtqd-a24d3",
+      "createdAt": "2026-08-21T18:30:44.293Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3ad6ok-ac5eb",
+      "createdAt": "2026-08-21T18:31:47.732Z",
+      "type": "ar_launch",
+      "payload": {
+        "sku": "CL240-B7021-L3020"
+      }
+    },
+    {
+      "id": "E-mt3aexth-32a4f",
+      "createdAt": "2026-08-21T18:33:09.557Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3alv8n-eeb77",
+      "createdAt": "2026-08-21T18:38:32.807Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3arkf7-c3442",
+      "createdAt": "2026-08-21T18:42:58.723Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3auba0-1d387",
+      "createdAt": "2026-08-21T18:45:06.840Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3auqp1-d7f29",
+      "createdAt": "2026-08-21T18:45:26.821Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3aywl7-6bc36",
+      "createdAt": "2026-08-21T18:48:41.083Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3b6pwj-f23cd",
+      "createdAt": "2026-08-21T18:54:45.667Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3bfech-350df",
+      "createdAt": "2026-08-21T19:01:30.593Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3bh3lm-708a7",
+      "createdAt": "2026-08-21T19:02:49.978Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3bhqjs-e89b6",
+      "createdAt": "2026-08-21T19:03:19.720Z",
+      "type": "share",
+      "payload": {
+        "sku": "CL240-B6029-L6029"
+      }
+    },
+    {
+      "id": "E-mt3bnw9f-4abf8",
+      "createdAt": "2026-08-21T19:08:07.059Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3bo22q-9d7de",
+      "createdAt": "2026-08-21T19:08:14.594Z",
+      "type": "pdf_download",
+      "payload": {
+        "sku": "CL240-B7021-L9004",
+        "code": "4MHDBM"
+      }
+    },
+    {
+      "id": "E-mt3bx1fu-b963b",
+      "createdAt": "2026-08-21T19:15:13.674Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3bx999-99aaf",
+      "createdAt": "2026-08-21T19:15:23.805Z",
+      "type": "pdf_download",
+      "payload": {
+        "sku": "CL240-B7021-L9004",
+        "code": "ZANBZS"
+      }
+    },
+    {
+      "id": "E-mt3c4186-84cbf",
+      "createdAt": "2026-08-21T19:20:39.990Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3c6qvs-69ba8",
+      "createdAt": "2026-08-21T19:22:46.552Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    },
+    {
+      "id": "E-mt3c8mz2-5a8bb",
+      "createdAt": "2026-08-21T19:24:14.798Z",
+      "type": "view",
+      "payload": {
+        "product": "240 L waste bin"
+      }
+    }
+  ],
+  "codes": {}
+}

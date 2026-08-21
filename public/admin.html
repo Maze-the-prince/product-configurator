@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+  <title>EquipXR Manufacturer Portal</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">XR</div><div>EquipXR <span class="brand-sub">Manufacturer family portal</span></div></div>
+    <nav class="nav"><a href="/">Live configurator</a><a href="/embed">Embed demo</a><a class="primary-link" href="/">View family</a></nav>
+  </header>
+  <main class="admin-shell">
+    <div class="page-heading">
+      <div><div class="eyebrow">Supplier manufacturer administration</div><h1>Revit family catalog</h1><p>Identity data, type catalog settings, specifier leads and embed code in one place.</p></div>
+      <button class="btn btn-primary" id="saveProduct">Save family settings</button>
+    </div>
+    <section class="metric-grid">
+      <div class="metric"><span>Configurator views</span><strong id="mViews">—</strong></div>
+      <div class="metric"><span>BIM downloads</span><strong id="mBim">—</strong></div>
+      <div class="metric"><span>Family requests</span><strong id="mQuotes">—</strong></div>
+      <div class="metric"><span>AR launches</span><strong id="mAR">—</strong></div>
+    </section>
+    <section class="admin-grid">
+      <div class="card">
+        <h2>Product &amp; Revit identity</h2>
+        <div class="field-grid">
+          <div><label class="label">Manufacturer</label><input class="text-input" id="manufacturer"></div>
+          <div><label class="label">Product name</label><input class="text-input" id="productName"></div>
+          <div><label class="label">Family name</label><input class="text-input" id="familyName"></div>
+          <div><label class="label">Revit category</label><input class="text-input" id="familyCategory"></div>
+          <div><label class="label">SKU prefix</label><input class="text-input" id="skuPrefix"></div>
+          <div><label class="label">Host</label><input class="text-input" id="hostMethod"></div>
+          <div><label class="label">OmniClass</label><input class="text-input" id="omniClass"></div>
+          <div><label class="label">MasterFormat</label><input class="text-input" id="masterFormat"></div>
+          <div><label class="label">Assembly code</label><input class="text-input" id="assemblyCode"></div>
+          <div><label class="label">IFC class</label><input class="text-input" id="ifcClass"></div>
+          <div><label class="label">Keynote</label><input class="text-input" id="keynote"></div>
+          <div><label class="label">Default LOD</label><input class="text-input" id="lod"></div>
+          <div><label class="label">Product URL</label><input class="text-input" id="productUrl"></div>
+          <div><label class="label">Base price</label><input class="text-input" type="number" id="basePrice"></div>
+          <div><label class="label">Currency</label><input class="text-input" id="currency"></div>
+          <div><label class="label">Accent color</label><input class="text-input" id="accent" type="color" style="height:44px;padding:4px"></div>
+          <div><label class="label">Width (mm)</label><input class="text-input" type="number" id="width"></div>
+          <div><label class="label">Depth (mm)</label><input class="text-input" type="number" id="depth"></div>
+          <div><label class="label">Height (mm)</label><input class="text-input" type="number" id="height"></div>
+          <div><label class="label">Sales email</label><input class="text-input" type="email" id="contactEmail"></div>
+        </div>
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line)">
+          <h2 style="margin-bottom:10px">Family asset onboarding</h2>
+          <p style="color:#64748b;font-size:13px;line-height:1.55;margin-top:0">Production clients upload a native .rfa template plus named-mesh GLB. Autodesk APS Design Automation or a desktop Revit add-in then writes types from the configurator spec. This demo uses procedural geometry and emits type catalogs plus shared parameters.</p>
+          <div class="file-box"><input type="file" accept=".rfa,.rte,.glb,.gltf,.zip" disabled><small style="display:block;color:#64748b;margin-top:8px">Demo placeholder — connect family library storage in production.</small></div>
+        </div>
+      </div>
+      <div style="display:grid;gap:18px">
+        <div class="card">
+          <h2>Latest family requests</h2>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Firm</th><th>Contact</th><th>Type / Revit</th><th>Status</th></tr></thead><tbody id="quoteRows"></tbody></table></div>
+        </div>
+        <div class="card">
+          <h2>BIM library embed</h2>
+          <p style="font-size:13px;color:#64748b;line-height:1.55">Add the family configurator to a manufacturer product or BIM library page without rebuilding the host website.</p>
+          <div class="codebox" id="embedCode"></div>
+          <div style="display:flex;gap:10px;margin-top:12px"><button class="btn" id="copyEmbed">Copy embed code</button><a class="btn" href="/embed">Open embed demo</a></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="toast hidden" id="toast"></div>
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

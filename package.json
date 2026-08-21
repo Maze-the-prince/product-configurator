@@ -1,0 +1,14 @@
+{
+  "name": "equipxr-client-demo-base",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "White-label Revit family configurator for a 240 L waste bin — body and lid RAL colour.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
