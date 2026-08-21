@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="3D configurator for a 240 litre waste bin — body colour, lid colour, and AR view" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=22" />
+  <link rel="stylesheet" href="styles.css?v=23" />
   <title>CityLine 240 — 3D configurator</title>
 </head>
 <body>
@@ -29,13 +29,13 @@
           <p class="orbit-caption" id="orbitHint">Drag to rotate · 360°</p>
           <p class="viewer-error hidden" id="viewerError">3D view could not start. Open this page in Chrome or Safari.</p>
         </div>
-        <button class="ar-link" id="arBtn" type="button">
+        <a class="ar-link" id="arBtn" rel="ar">
           <svg class="ar-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M20 8V5.5A1.5 1.5 0 0 0 18.5 4H16M4 16v2.5A1.5 1.5 0 0 0 5.5 20H8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/>
             <path fill="currentColor" d="M12 6.4 17 9.2v5.6L12 17.6 7 14.8V9.2L12 6.4zm0 1.85-3.2 1.8v3.9L12 15.75l3.2-1.8v-3.9L12 8.25z"/>
           </svg>
           View in AR
-        </button>
+        </a>
         <p class="shop-ad">Let clients change <strong>colour</strong>, <strong>size</strong>, <strong>shape</strong>, and product <strong>variations</strong> in a live 3D view — then share, view in AR, download a PDF, and request an offer.</p>
       </section>
 
@@ -128,6 +128,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=23"></script>
+  <script type="module" src="app.js?v=25"></script>
 </body>
 </html>

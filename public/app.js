@@ -33,6 +33,32 @@ const SHARED_PARAMS = [
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 const PHONE_GPU = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const DESKTOP_DPR = Math.min(devicePixelRatio || 1, PHONE_GPU ? 1.35 : 1.75);
+
+function isIOS() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function isAndroid() {
+  return /Android/i.test(navigator.userAgent || '');
+}
+function isAppleSafari() {
+  const ua = navigator.userAgent || '';
+  return isIOS() && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+}
+function sceneViewerIntentUrl() {
+  const file = new URL('./assets/model.glb', import.meta.url).href;
+  const title = encodeURIComponent(product.productName || 'Product');
+  const query = `file=${encodeURIComponent(file)}&mode=ar_preferred&title=${title}&resizable=false`;
+  const fallback = `https://arvr.google.com/scene-viewer/1.0?${query}`;
+  return `intent://arvr.google.com/scene-viewer/1.2?${query}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;S.browser_fallback_url=${encodeURIComponent(fallback)};end;`;
+}
+function wireAndroidArLink() {
+  if (!isAndroid()) return;
+  const arBtn = document.getElementById('arBtn');
+  if (!arBtn) return;
+  arBtn.setAttribute('href', sceneViewerIntentUrl());
+  arBtn.setAttribute('rel', 'ar');
+}
 const ASSET_VERSION = '2';
 const DEFAULT_GLB_URL = new URL(`./assets/model.glb?v=${ASSET_VERSION}`, import.meta.url).href;
 const AD_LINE = 'Transform your 3D models into configurable views for your clients';
@@ -79,6 +105,7 @@ let plaqueMesh, plaqueTex, plaqueCtx, plaqueCanvas;
 let plaqueTimer = 0;
 
 async function init() {
+  wireAndroidArLink();
   try {
     const res = await fetch('/api/product');
     if (res.ok) product = { ...product, ...(await res.json()) };
@@ -97,7 +124,6 @@ async function init() {
     tryLoadPreviewGlb().then((ok) => {
       if (ok) updateAll();
       scheduleNativeArFile();
-      if (new URL(location.href).searchParams.get('ar') === 'webxr') startAR(true);
     }).catch((err) => console.error(err));
   } catch (err) {
     console.error('[EquipXR] 3D view failed', err);
@@ -680,7 +706,18 @@ function bindUI() {
   });
 
   $('#orbitHint')?.addEventListener('click', hideOrbitHint);
-  $('#arBtn')?.addEventListener('click', startAR);
+  const arBtn = $('#arBtn');
+  if (arBtn) {
+    wireAndroidArLink();
+    arBtn.addEventListener('click', (e) => {
+      if (isAndroid()) {
+        track('ar_launch', { sku: config.computed?.sku });
+        return;
+      }
+      e.preventDefault();
+      startAR();
+    });
+  }
   $('#arRetryBtn')?.addEventListener('click', () => { closeModal('#arHelpModal'); startAR(); });
   $('#arHelpClose')?.addEventListener('click', () => closeModal('#arHelpModal'));
   $('#arExitBtn')?.addEventListener('click', () => xrSession?.end());
@@ -767,7 +804,7 @@ function money(v) {
   return moneyFmt.format(v);
 }
 
-async function startAR(forceWebXR = false) {
+async function startAR() {
   track('ar_launch', { sku: config.computed?.sku });
   if (isIOS()) {
     if (!isAppleSafari()) {
@@ -776,20 +813,12 @@ async function startAR(forceWebXR = false) {
     }
     return launchQuickLookAR();
   }
-  if (isAndroid() && !forceWebXR) return launchSceneViewer();
+  if (isAndroid()) {
+    location.href = sceneViewerIntentUrl();
+    return;
+  }
   if (await launchWebXR()) return;
-  if (isAndroid()) return launchSceneViewer();
-  showARHelp('Open this HTTPS page in Safari on iPhone, or Chrome on Android, then tap View in AR.');
-}
-
-function isIOS() {
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-function isAppleSafari() {
-  const ua = navigator.userAgent || '';
-  return isIOS() && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+  showARHelp('On Android, open this HTTPS page in Chrome, then tap View in AR.');
 }
 
 async function launchWebXR() {
@@ -799,38 +828,42 @@ async function launchWebXR() {
   if (!supported) return false;
   const overlay = $('#arOverlay');
   overlay?.classList.remove('hidden');
-  const options = {
-    optionalFeatures: ['hit-test', 'light-estimation', 'dom-overlay'],
-    ...(overlay ? { domOverlay: { root: overlay } } : {})
-  };
-  try {
-    xrSession = await navigator.xr.requestSession('immersive-ar', options);
-    renderer.setPixelRatio(1);
-    renderer.xr.setFramebufferScaleFactor(0.88);
-    renderer.xr.setReferenceSpaceType('local');
-    await renderer.xr.setSession(xrSession);
-    ensureLoop();
-    document.body.classList.add('is-ar');
-    arPlaced = false;
-    arHitStable = 0;
-    arLastHitY = null;
-    setARPresentation(true);
-    root.visible = false;
-    reticle.visible = false;
-    if (contactShadow) contactShadow.visible = false;
-    setText('#arBanner', 'Scan the floor, then tap to place.');
-    xrSession.addEventListener('select', onARSelect);
-    xrSession.addEventListener('end', onAREnd);
-    return true;
-  } catch (err) {
-    console.error(err);
-    xrSession = null;
-    overlay?.classList.add('hidden');
-    document.body.classList.remove('is-ar');
-    setARPresentation(false);
-    renderer.setPixelRatio(DESKTOP_DPR);
-    return false;
+  const attempts = overlay
+    ? [
+        { optionalFeatures: ['hit-test', 'dom-overlay'], domOverlay: { root: overlay } },
+        { optionalFeatures: ['hit-test'] }
+      ]
+    : [{ optionalFeatures: ['hit-test'] }];
+  for (const options of attempts) {
+    try {
+      xrSession = await navigator.xr.requestSession('immersive-ar', options);
+      renderer.setPixelRatio(1);
+      renderer.xr.setFramebufferScaleFactor(0.88);
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(xrSession);
+      ensureLoop();
+      document.body.classList.add('is-ar');
+      arPlaced = false;
+      arHitStable = 0;
+      arLastHitY = null;
+      setARPresentation(true);
+      root.visible = false;
+      reticle.visible = false;
+      if (contactShadow) contactShadow.visible = false;
+      setText('#arBanner', 'Scan the floor, then tap to place.');
+      xrSession.addEventListener('select', onARSelect);
+      xrSession.addEventListener('end', onAREnd);
+      return true;
+    } catch (err) {
+      console.error(err);
+      xrSession = null;
+    }
   }
+  overlay?.classList.add('hidden');
+  document.body.classList.remove('is-ar');
+  setARPresentation(false);
+  renderer.setPixelRatio(DESKTOP_DPR);
+  return false;
 }
 
 function setARPresentation(on) {
@@ -886,10 +919,8 @@ function makeContactShadow() {
 }
 
 function launchSceneViewer() {
-  const file = new URL(`assets/model.glb?v=${ASSET_VERSION}`, location.href).href;
-  const title = encodeURIComponent(product.productName || 'Product');
-  const fallback = encodeURIComponent(`${location.origin}${location.pathname}?ar=webxr`);
-  location.href = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(file)}&mode=ar_only&resizable=false&title=${title}#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
+  location.href = sceneViewerIntentUrl();
+  return true;
 }
 
 async function launchQuickLookAR() {
